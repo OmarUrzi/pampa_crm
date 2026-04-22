@@ -165,7 +165,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       });
 
       const fe = env.FRONTEND_URL ?? "http://localhost:5173";
-      return reply.redirect(302, `${fe.replace(/\\/$/, "")}/admin/mailboxes?connected=1`);
+      return reply.redirect(302, `${fe.replace(/\/$/, "")}/admin/mailboxes?connected=1`);
     });
   }
 
