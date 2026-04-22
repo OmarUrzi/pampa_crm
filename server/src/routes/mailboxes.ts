@@ -29,12 +29,18 @@ async function ingestMessage(gmail: any, mailboxId: string, gmailId: string) {
     format: "metadata",
     metadataHeaders: ["From", "To", "Cc", "Subject", "Date"],
   });
-  const headers = new Map(
-    (full.data.payload?.headers ?? []).map((h: any) => [String(h.name ?? "").toLowerCase(), String(h.value ?? "")]),
+  const headers = new Map<string, string>(
+    (full.data.payload?.headers ?? []).map((h: any) => [
+      String(h.name ?? "").toLowerCase(),
+      String(h.value ?? ""),
+    ]),
   );
-  const fromRaw = headers.get("from");
+  const fromRaw = headers.get("from") ?? null;
   const fromEmail = parseAddressList(fromRaw)[0] ?? null;
-  const to = [...parseAddressList(headers.get("to")), ...parseAddressList(headers.get("cc"))];
+  const to = [
+    ...parseAddressList(headers.get("to") ?? null),
+    ...parseAddressList(headers.get("cc") ?? null),
+  ];
 
   await prisma.gmailMessage.upsert({
     where: { mailboxId_gmailId: { mailboxId, gmailId } },
