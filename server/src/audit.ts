@@ -1,5 +1,6 @@
 import type { FastifyRequest } from "fastify";
 import { prisma } from "./prisma";
+import { Prisma } from "@prisma/client";
 
 export type AuditAction =
   | "create"
@@ -26,7 +27,12 @@ export async function auditLog(params: {
       entity: params.entity,
       entityId: params.entityId ?? null,
       summary: params.summary ?? null,
-      data: params.data ? (params.data as object) : null,
+      data:
+        params.data === undefined
+          ? undefined
+          : params.data === null
+            ? Prisma.JsonNull
+            : (params.data as Prisma.InputJsonValue),
       ip,
       userAgent,
     },

@@ -73,7 +73,7 @@ function decodePubsubMessage(req: any): { emailAddress?: string; historyId?: str
   }
 }
 
-function parseAddressList(x: string | undefined) {
+function parseAddressList(x: string | null | undefined) {
   if (!x) return [];
   // very simple parsing: split by comma and extract emails inside <>
   return x
@@ -105,7 +105,7 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
       if (!c) return reply.code(404).send({ error: "not_found" });
 
       const list = await c.gmail.users.messages.list({ userId: "me", maxResults: 25, q: "newer_than:30d" });
-      const ids = (list.data.messages ?? []).map((m) => m.id).filter(Boolean) as string[];
+      const ids = (list.data.messages ?? []).map((m: any) => m.id).filter(Boolean) as string[];
 
       let upserted = 0;
       for (const gmailId of ids) {
@@ -137,7 +137,7 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
     const c = await gmailClientForMailbox(mailbox.id);
     if (!c) return reply.send({ ok: true });
 
-    const startHistoryId = mailbox.lastHistoryId;
+      const startHistoryId = mailbox.lastHistoryId ?? undefined;
     if (!startHistoryId) return reply.send({ ok: true });
 
     try {

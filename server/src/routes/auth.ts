@@ -129,7 +129,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         prompt: "consent",
         scope: ["https://www.googleapis.com/auth/gmail.readonly", "email"],
       });
-      return reply.redirect(302, url);
+      return reply.redirect(url, 302);
     });
 
     app.get("/auth/google-gmail/callback", async (req, reply) => {
@@ -165,7 +165,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       });
 
       const fe = env.FRONTEND_URL ?? "http://localhost:5173";
-      return reply.redirect(302, `${fe.replace(/\/$/, "")}/admin/mailboxes?connected=1`);
+      return reply.redirect(`${fe.replace(/\/$/, "")}/admin/mailboxes?connected=1`, 302);
     });
   }
 
@@ -222,7 +222,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     if (u?.id) await issueRefreshToken(reply, u.id);
     const fe = env.FRONTEND_URL ?? "http://localhost:5173";
     const redirectUrl = `${fe.replace(/\/$/, "")}/auth/callback#token=${encodeURIComponent(jwtToken)}`;
-    return reply.redirect(302, redirectUrl);
+    return reply.redirect(redirectUrl, 302);
   });
 }
 
