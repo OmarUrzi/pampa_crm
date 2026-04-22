@@ -1,0 +1,387 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserId {
+  Laura
+  Melanie
+}
+
+enum Currency {
+  USD
+  ARS
+}
+
+enum EventoStatus {
+  consulta
+  cotizando
+  enviada
+  negociacion
+  confirmado
+  perdido
+}
+
+enum CommTipo {
+  Mail
+  WhatsApp
+}
+
+enum PagoTipo {
+  cobro_cliente
+  pago_proveedor
+}
+
+enum AppUserRole {
+  user
+  viewer
+  admin
+}
+
+model AppUser {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      AppUserRole @default(user)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  refreshTokens RefreshToken[]
+}
+
+model GoogleMailbox {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  provider  String   @default("google")
+  lastHistoryId String?
+  lastSyncAt DateTime?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tokens   GoogleMailboxToken[]
+  messages GmailMessage[]
+
+  @@index([email])
+}
+
+model GoogleMailboxToken {
+  id             String   @id @default(cuid())
+  mailboxId      String
+  refreshTokenEnc String
+  scope          String?
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  mailbox GoogleMailbox @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+
+  @@index([mailboxId])
+  @@index([revokedAt])
+}
+
+model GmailMessage {
+  id          String   @id @default(cuid())
+  mailboxId   String
+  gmailId     String
+  threadId    String?
+  fromEmail   String?
+  toEmails    String?
+  subject     String?
+  snippet     String?
+  internalAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  mailbox GoogleMailbox @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+
+  @@unique([mailboxId, gmailId])
+  @@index([mailboxId])
+  @@index([fromEmail])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  lastUsedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+model Empresa {
+  id        String    @id @default(cuid())
+  nombre    String
+  sector    String?
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  contactos Contacto[]
+  eventos   Evento[]
+
+  @@unique([nombre])
+}
+
+model Contacto {
+  id        String   @id @default(cuid())
+  empresaId String
+  nombre    String
+  cargo     String?
+  email     String?
+  telefono  String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId])
+}
+
+model Evento {
+  id          String      @id @default(cuid())
+  empresaId   String
+  nombre      String
+  contactoRef String?
+  locacion    String
+  fechaLabel  String
+  pax         Int
+  status      EventoStatus
+  currency    Currency
+  responsable UserId
+  tipo        String
+
+  cotizadoTotal Int @default(0)
+  costoEstimado Int @default(0)
+
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  cotizaciones CotizacionVersion[]
+  pagos       Pago[]
+  proveedores  ProveedorPedido[]
+  comms       EventoComm[]
+  chat        EventoChatMsg[]
+
+  @@index([empresaId])
+  @@index([status])
+  @@index([responsable])
+}
+
+model CotizacionVersion {
+  id        String   @id @default(cuid())
+  eventoId  String
+  versionNo Int
+  label     String
+  isCurrent Boolean @default(false)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+
+  evento Evento @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  items  CotizacionItem[]
+
+  @@unique([eventoId, versionNo])
+  @@index([eventoId])
+}
+
+model CotizacionItem {
+  id          String @id @default(cuid())
+  versionId   String
+  servicio    String
+  proveedor   String
+  pax         Int
+  unitCur     Currency @default(USD)
+  unit        Int
+  deletedAt   DateTime?
+
+  version CotizacionVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId])
+}
+
+model Proveedor {
+  id        String   @id @default(cuid())
+  nombre    String   @unique
+  categoria String?
+  contacto  String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contactos ProveedorContacto[]
+  pedidos ProveedorPedido[]
+}
+
+model ProveedorContacto {
+  id          String   @id @default(cuid())
+  proveedorId String
+  nombre      String
+  email       String?
+  telefono    String?
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  proveedor Proveedor @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
+
+  @@index([proveedorId])
+}
+
+model ProveedorPedido {
+  id           String   @id @default(cuid())
+  eventoId     String
+  proveedorId  String?
+  proveedorTxt String
+  categoria    String
+  pedidoLabel  String
+  pedidoAt     DateTime?
+  respondioLabel String?
+  respondioAt  DateTime?
+  montoLabel   String?
+  rating       Int?
+  deletedAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  evento    Evento    @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  proveedor Proveedor? @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
+
+  @@index([eventoId])
+  @@index([proveedorId])
+}
+
+model Pago {
+  id        String   @id @default(cuid())
+  eventoId  String
+  concepto  String
+  tipo      PagoTipo
+  monto     Int
+  moneda    Currency
+  fechaLabel String
+  ok        Boolean  @default(false)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evento Evento @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+
+  @@index([eventoId])
+  @@index([tipo])
+  @@index([ok])
+}
+
+model EventoComm {
+  id        String   @id @default(cuid())
+  eventoId  String
+  de        String
+  msg       String
+  horaLabel String
+  dir       String
+  tipo      CommTipo
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+
+  evento Evento @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+
+  @@index([eventoId])
+  @@index([tipo])
+}
+
+model EventoChatMsg {
+  id        String   @id @default(cuid())
+  eventoId  String
+  role      String
+  msg       String
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+
+  evento Evento @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+
+  @@index([eventoId])
+}
+
+model AiPromptLog {
+  id        String   @id @default(cuid())
+  eventoId  String?
+  prompt    String
+  response  String
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([eventoId])
+}
+
+model ActividadCatalogo {
+  id        String   @id @default(cuid())
+  nombre    String
+  descripcion String?
+  categoria String
+  duracion  String?
+  capacidad String?
+  precioUsd Int?
+  proveedorTxt String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  temporadas ActividadTemporada[]
+  fotos      ActividadFoto[]
+}
+
+model ActividadTemporada {
+  id          String @id @default(cuid())
+  actividadId String
+  temporada   String
+  deletedAt   DateTime?
+
+  actividad ActividadCatalogo @relation(fields: [actividadId], references: [id], onDelete: Cascade)
+
+  @@index([actividadId])
+  @@unique([actividadId, temporada])
+}
+
+model ActividadFoto {
+  id          String @id @default(cuid())
+  actividadId String
+  url         String
+  caption     String?
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  actividad ActividadCatalogo @relation(fields: [actividadId], references: [id], onDelete: Cascade)
+
+  @@index([actividadId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userEmail String?
+  action    String
+  entity    String
+  entityId  String?
+  summary   String?
+  data      Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userEmail])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+

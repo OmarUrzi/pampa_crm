@@ -1,0 +1,29 @@
+.wrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(1200px 800px at 10% 10%, #fff7f2 0%, #ffffff 55%, #f6f7fb 100%);
+}
+
+.card {
+  width: min(520px, 100%);
+  border-radius: 18px;
+  border: 0.5px solid var(--color-border-tertiary);
+  background: var(--color-surface);
+  padding: 18px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+

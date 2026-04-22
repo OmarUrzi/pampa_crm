@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pampa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Install server deps
+        working-directory: server
+        run: npm ci
+
+      - name: Prisma generate + migrate
+        working-directory: server
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pampa
+          JWT_SECRET: test-test-test-test-test-test
+          NODE_ENV: test
+          FRONTEND_URL: http://localhost:5173
+        run: |
+          npm run prisma:generate
+          npm run prisma:migrate
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Start backend
+        working-directory: server
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pampa
+          JWT_SECRET: test-test-test-test-test-test
+          NODE_ENV: test
+          FRONTEND_URL: http://localhost:5173
+          PORT: 8787
+        run: nohup npm run dev >/tmp/server.log 2>&1 &
+
+      - name: Start frontend
+        env:
+          VITE_API_BASE: http://localhost:8787
+        run: nohup npm run dev -- --host 0.0.0.0 --port 5173 >/tmp/frontend.log 2>&1 &
+
+      - name: Wait for services
+        run: |
+          node -e "fetch('http://localhost:8787/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+          node -e "fetch('http://localhost:5173').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+
+      - name: E2E tests
+        env:
+          VITE_API_BASE: http://localhost:8787
+        run: npm run test:e2e
+
