@@ -45,6 +45,7 @@ export function CatalogoActividadFormModal({
   const setCatalogo = useAppStore((s) => s.setCatalogo);
   const canEdit = useCanEdit();
   const gate = useAuthGate();
+  const [busy, setBusy] = useState(false);
 
   const [f, setF] = useState<FormState>(() => {
     if (mode === "edit" && initial) return toForm(initial, proveedores);
@@ -82,6 +83,7 @@ export function CatalogoActividadFormModal({
   }
 
   function save() {
+    if (busy) return;
     const prov = proveedores.find((p) => p.id === f.proveedorId);
     const payload = {
       nombre: f.nombre.trim() || "—",
@@ -95,13 +97,28 @@ export function CatalogoActividadFormModal({
         .map((url) => ({ url })),
     };
 
+    // Close immediately for snappier UX; update list optimistically.
+    onClose();
+
     void gate.run(async () => {
+      setBusy(true);
       if (mode === "create") {
+        const tmpId = `tmp-act-${Date.now()}`;
+        const optimistic: CatalogoActividad = {
+          id: tmpId,
+          nombre: payload.nombre,
+          descripcion: payload.descripcion ?? "",
+          categoria: payload.categoria,
+          precioUsd: payload.precioUsd ?? 0,
+          proveedorSugerido: payload.proveedorTxt ?? "—",
+          fotos: payload.fotos?.map((x) => x.url) ?? [],
+        };
+        setCatalogo([optimistic, ...actividades]);
+
         const res = await apiCreateActividad(payload);
         const created = mapToStore(res.actividad);
-        setCatalogo([created, ...actividades]);
+        setCatalogo((useAppStore.getState().catalogo ?? []).map((x) => (x.id === tmpId ? created : x)));
         await afterSavedSafe();
-        onClose();
         return;
       }
       if (!initial) return;
@@ -113,9 +130,10 @@ export function CatalogoActividadFormModal({
         proveedorTxt: payload.proveedorTxt ?? null,
       });
       const updated = mapToStore(res.actividad);
-      setCatalogo(actividades.map((x) => (x.id === updated.id ? updated : x)));
+      setCatalogo((useAppStore.getState().catalogo ?? []).map((x) => (x.id === updated.id ? updated : x)));
       await afterSavedSafe();
-      onClose();
+    }).finally(() => {
+      setBusy(false);
     });
   }
 
@@ -145,8 +163,8 @@ export function CatalogoActividadFormModal({
           <Button type="button" onClick={onClose}>
             Cancelar
           </Button>
-          <Button variant="primary" type="button" onClick={save} disabled={!canEdit}>
-            Guardar
+          <Button variant="primary" type="button" onClick={save} disabled={!canEdit || busy}>
+            {busy ? "Guardando…" : "Guardar"}
           </Button>
         </>
       }
