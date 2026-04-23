@@ -1,5 +1,7 @@
 .frame {
   padding: 0;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .shell {
@@ -7,7 +9,7 @@
   border-radius: 0;
   overflow: hidden;
   border: none;
-  min-height: 100vh;
+  height: 100%;
   width: 100%;
   background: var(--color-surface);
 }
@@ -18,8 +20,7 @@
   background: var(--color-sidebar);
   padding: 0;
   height: 100vh;
-  position: sticky;
-  top: 0;
+  position: relative;
   overflow: hidden;
 }
 
@@ -28,5 +29,6 @@
   padding: 22px 24px;
   background: var(--color-background-primary);
   overflow: auto;
+  height: 100%;
 }
 
