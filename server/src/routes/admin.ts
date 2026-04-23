@@ -67,14 +67,13 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       }
       const schema = z.object({ apiKey: z.string().min(10) });
       const body = schema.parse(req.body);
+      const enc = encryptSecret(body.apiKey);
 
-      // Revoke previous
-      await prisma.aiProviderKey.updateMany({
-        where: { provider: provider as any, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
-      const row = await prisma.aiProviderKey.create({
-        data: { provider: provider as any, apiKeyEnc: encryptSecret(body.apiKey) },
+      // Una sola fila por `provider` (@unique): rotar clave = actualizar cifrado, no crear otra fila.
+      const row = await prisma.aiProviderKey.upsert({
+        where: { provider: provider as "openai" | "anthropic" },
+        create: { provider: provider as any, apiKeyEnc: enc },
+        update: { apiKeyEnc: enc, revokedAt: null },
         select: { provider: true, createdAt: true, updatedAt: true, revokedAt: true },
       });
       return reply.send({ provider: row });
