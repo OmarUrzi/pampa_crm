@@ -66,6 +66,9 @@ export async function registerEventoRoutes(app: FastifyInstance) {
           .filter(Boolean),
       ),
     );
+    // If the event stores a direct contact reference that looks like an email, use it too.
+    const evRef = (ev.contactoRef ?? "").trim().toLowerCase();
+    if (evRef && evRef.includes("@")) emails.push(evRef);
     if (!emails.length) return { messages: [] };
 
     const or = [

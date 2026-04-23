@@ -116,6 +116,7 @@ export function EventoFormModal({
     if (mode === "create") {
       const cliente = clientes.find((c) => c.id === f.clienteId);
       const contacto = cliente?.contactos.find((c) => c.id === f.contactoId);
+      const contactoRef = (contacto?.email ?? contacto?.nombre ?? "").trim() || undefined;
 
       // Optimistic local create for snappy UX; replaced after API refresh.
       const tmpId = addEvento({
@@ -142,7 +143,7 @@ export function EventoFormModal({
             empresaNombre: cliente?.nombre ?? "—",
             sector: cliente?.sector ?? undefined,
             nombre: f.nombre.trim(),
-            contactoRef: contacto?.nombre ?? undefined,
+            contactoRef,
             locacion: f.locacion.trim() || "Bariloche",
             fechaLabel: f.fecha.trim() || "—",
             pax: paxSafe,
@@ -190,6 +191,7 @@ export function EventoFormModal({
     if (!initial) return;
     const cliente = clientes.find((c) => c.id === f.clienteId);
     const contacto = cliente?.contactos.find((c) => c.id === f.contactoId);
+    const contactoRef = (contacto?.email ?? contacto?.nombre ?? "").trim() || null;
     updateEvento(initial.id, {
       nombre: f.nombre.trim(),
       empresa: cliente?.nombre ?? "—",
@@ -210,7 +212,7 @@ export function EventoFormModal({
       await gate.run(async () => {
         await patchEvento(initial.id, {
           nombre: f.nombre.trim(),
-          contactoRef: contacto?.nombre ?? null,
+          contactoRef,
           locacion: f.locacion.trim() || "Bariloche",
           fechaLabel: f.fecha.trim() || "—",
           pax: paxSafe,
