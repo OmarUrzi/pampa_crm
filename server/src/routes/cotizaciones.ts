@@ -1,15 +1,42 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { prisma } from "../prisma";
-import { jwtVerifyGuard } from "../auth/jwtGuards";
-import { requireWriteAccess } from "../auth/roleGuards";
-import { auditLog } from "../audit";
+import { prisma } from "../prisma.js";
+import { jwtVerifyGuard } from "../auth/jwtGuards.js";
+import { requireWriteAccess } from "../auth/roleGuards.js";
+import { auditLog } from "../audit.js";
 
 function labelForVersionNo(n: number) {
   return `v${n}`;
 }
 
 export async function registerCotizacionesRoutes(app: FastifyInstance) {
+  const itemSchema = z.object({
+    servicio: z.string().optional(),
+    proveedor: z.string().optional(),
+    pax: z.number().int().nonnegative().optional(),
+    unitCur: z.enum(["USD", "ARS"]).optional(),
+    unit: z.number().int().nonnegative().optional(),
+  });
+
+  async function getCurrentVersionOr404(eventoId: string, reply: any) {
+    const evento = await prisma.evento.findUnique({ where: { id: eventoId } });
+    if (!evento || evento.deletedAt) {
+      reply.code(404).send({ error: "not_found" });
+      return null;
+    }
+
+    const v = await prisma.cotizacionVersion.findFirst({
+      where: { eventoId, deletedAt: null, isCurrent: true },
+      include: { items: { where: { deletedAt: null } } },
+      orderBy: { versionNo: "desc" },
+    });
+    if (!v) {
+      reply.code(404).send({ error: "not_found" });
+      return null;
+    }
+    return v;
+  }
+
   // Crear nueva versión (clona items de la última versión vigente si existe)
   app.post(
     "/eventos/:eventoId/cotizaciones/version",
@@ -70,6 +97,51 @@ export async function registerCotizacionesRoutes(app: FastifyInstance) {
     },
   );
 
+  // Back-compat (frontend older build): add item to the current version without specifying versionId.
+  app.post(
+    "/eventos/:eventoId/cotizaciones/v2/items",
+    { preHandler: [jwtVerifyGuard, requireWriteAccess()] },
+    async (req, reply) => {
+      const eventoId = (req.params as { eventoId: string }).eventoId;
+      const version = await getCurrentVersionOr404(eventoId, reply);
+      if (!version) return;
+
+      const body = itemSchema.parse(req.body);
+      const item = await prisma.cotizacionItem.create({
+        data: {
+          versionId: version.id,
+          servicio: body.servicio ?? "",
+          proveedor: body.proveedor ?? "",
+          pax: body.pax ?? 0,
+          unitCur: body.unitCur ?? "USD",
+          unit: body.unit ?? 0,
+        },
+      });
+
+      await auditLog({
+        req,
+        action: "create",
+        entity: "CotizacionItem",
+        entityId: item.id,
+        summary: `Item agregado a versión actual (${version.id})`,
+        data: body,
+      });
+
+      return reply.code(201).send({ item, versionId: version.id });
+    },
+  );
+
+  app.get(
+    "/eventos/:eventoId/cotizaciones/v2/items",
+    { preHandler: [jwtVerifyGuard] },
+    async (req, reply) => {
+      const eventoId = (req.params as { eventoId: string }).eventoId;
+      const version = await getCurrentVersionOr404(eventoId, reply);
+      if (!version) return;
+      return reply.send({ version });
+    },
+  );
+
   // Agregar item a una versión
   app.post(
     "/eventos/:eventoId/cotizaciones/:versionId/items",
@@ -82,14 +154,7 @@ export async function registerCotizacionesRoutes(app: FastifyInstance) {
         return reply.code(404).send({ error: "not_found" });
       }
 
-      const schema = z.object({
-        servicio: z.string().optional(),
-        proveedor: z.string().optional(),
-        pax: z.number().int().nonnegative().optional(),
-        unitCur: z.enum(["USD", "ARS"]).optional(),
-        unit: z.number().int().nonnegative().optional(),
-      });
-      const body = schema.parse(req.body);
+      const body = itemSchema.parse(req.body);
 
       const item = await prisma.cotizacionItem.create({
         data: {
@@ -136,14 +201,7 @@ export async function registerCotizacionesRoutes(app: FastifyInstance) {
         return reply.code(404).send({ error: "not_found" });
       }
 
-      const schema = z.object({
-        servicio: z.string().optional(),
-        proveedor: z.string().optional(),
-        pax: z.number().int().nonnegative().optional(),
-        unitCur: z.enum(["USD", "ARS"]).optional(),
-        unit: z.number().int().nonnegative().optional(),
-      });
-      const body = schema.parse(req.body);
+      const body = itemSchema.parse(req.body);
 
       const item = await prisma.cotizacionItem.update({
         where: { id: itemId },
