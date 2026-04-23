@@ -4,6 +4,7 @@ import { prisma } from "../prisma.js";
 import { jwtVerifyGuard } from "../auth/jwtGuards.js";
 import { requireRole } from "../auth/roleGuards.js";
 import { auditLog } from "../audit.js";
+import { encryptSecret } from "../google/crypto.js";
 
 export async function registerAdminRoutes(app: FastifyInstance) {
   app.get("/admin/users", { preHandler: [jwtVerifyGuard, requireRole(["admin"])] }, async () => {
@@ -44,6 +45,39 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         data: body,
       });
       return reply.send({ user: { id: user.id, email: user.email, name: user.name, role: (user as any).role } });
+    },
+  );
+
+  app.get("/admin/ai-providers", { preHandler: [jwtVerifyGuard, requireRole(["admin"])] }, async () => {
+    const rows = await prisma.aiProviderKey.findMany({
+      where: { revokedAt: null },
+      select: { provider: true, createdAt: true, updatedAt: true, revokedAt: true },
+      orderBy: { provider: "asc" },
+    });
+    return { providers: rows };
+  });
+
+  app.put(
+    "/admin/ai-providers/:provider",
+    { preHandler: [jwtVerifyGuard, requireRole(["admin"])] },
+    async (req, reply) => {
+      const provider = String((req.params as any)?.provider ?? "").toLowerCase();
+      if (provider !== "openai" && provider !== "anthropic") {
+        return reply.code(400).send({ error: "invalid_provider" });
+      }
+      const schema = z.object({ apiKey: z.string().min(10) });
+      const body = schema.parse(req.body);
+
+      // Revoke previous
+      await prisma.aiProviderKey.updateMany({
+        where: { provider: provider as any, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      const row = await prisma.aiProviderKey.create({
+        data: { provider: provider as any, apiKeyEnc: encryptSecret(body.apiKey) },
+        select: { provider: true, createdAt: true, updatedAt: true, revokedAt: true },
+      });
+      return reply.send({ provider: row });
     },
   );
 }

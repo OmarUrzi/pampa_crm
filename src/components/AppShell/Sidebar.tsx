@@ -54,6 +54,7 @@ export function Sidebar() {
   const adminNav = [
     { to: "/admin/users", label: "Usuarios", icon: "◈" },
     { to: "/admin/mailboxes", label: "Mailboxes", icon: "◉" },
+    { to: "/admin/ai", label: "AI", icon: "◎" },
   ] as const;
 
   return (

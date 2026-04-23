@@ -20,3 +20,22 @@ export async function apiAdminPatchUserRole(id: string, role: AdminUser["role"])
   });
 }
 
+export type AiProvider = "openai" | "anthropic";
+export type AiProviderRow = {
+  provider: AiProvider;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt: string | null;
+};
+
+export async function apiAdminListAiProviders() {
+  return await apiFetch<{ providers: AiProviderRow[] }>("/admin/ai-providers");
+}
+
+export async function apiAdminUpsertAiProvider(provider: AiProvider, apiKey: string) {
+  return await apiFetch<{ provider: AiProviderRow }>(`/admin/ai-providers/${provider}`, {
+    method: "PUT",
+    body: JSON.stringify({ apiKey }),
+  });
+}
+
