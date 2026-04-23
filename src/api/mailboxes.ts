@@ -10,6 +10,8 @@ export async function apiSyncMailbox(id: string) {
   return await apiFetch<{ ok: boolean; upserted: number }>(`/mailboxes/${id}/sync`, {
     method: "POST",
     body: JSON.stringify({}),
+    // Gmail sync can take longer than normal API requests.
+    timeoutMs: 60_000,
   });
 }
 

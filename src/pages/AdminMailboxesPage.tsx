@@ -12,6 +12,7 @@ export function AdminMailboxesPage() {
 
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncingById, setSyncingById] = useState<Record<string, boolean>>({});
   const [email, setEmail] = useState("");
   const [messages, setMessages] = useState<
     Array<{ id: string; mailbox: string; fromEmail: string | null; toEmails: string[]; subject: string | null; snippet: string | null; at: string }>
@@ -105,14 +106,20 @@ export function AdminMailboxesPage() {
                 <td style={{ padding: "9px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
                   <Button
                     type="button"
+                    disabled={!!syncingById[m.id]}
                     onClick={() => {
                       void run(async () => {
-                        const res = await apiSyncMailbox(m.id);
-                        info(`Sync OK (${m.email}) · ${res?.upserted ?? 0} msgs`);
+                        setSyncingById((s) => ({ ...s, [m.id]: true }));
+                        try {
+                          const res = await apiSyncMailbox(m.id);
+                          info(`Sync OK (${m.email}) · ${res?.upserted ?? 0} msgs`);
+                        } finally {
+                          setSyncingById((s) => ({ ...s, [m.id]: false }));
+                        }
                       });
                     }}
                   >
-                    Sync
+                    {syncingById[m.id] ? "Syncing…" : "Sync"}
                   </Button>
                 </td>
               </tr>
