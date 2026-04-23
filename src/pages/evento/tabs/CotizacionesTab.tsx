@@ -177,7 +177,7 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                     ? "var(--color-border-primary)"
                     : "var(--color-border-tertiary)"
                 }`,
-                background: activeVersionId === v.id ? "#FEF0EA" : "transparent",
+                background: activeVersionId === v.id ? "var(--color-primary-subtle)" : "transparent",
                 fontSize: 12,
                 fontWeight: activeVersionId === v.id ? 700 : 600,
                 color:
@@ -613,10 +613,13 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
               </td>
             </tr>
             <tr>
-              <td colSpan={5} style={{ padding: "9px 12px", textAlign: "right", fontWeight: 800, color: "#1D9E75" }}>
+              <td
+                colSpan={5}
+                style={{ padding: "9px 12px", textAlign: "right", fontWeight: 800, color: "var(--color-success-fg)" }}
+              >
                 Margen bruto
               </td>
-              <td style={{ padding: "9px 12px", fontWeight: 800, color: "#1D9E75" }}>
+              <td style={{ padding: "9px 12px", fontWeight: 800, color: "var(--color-success-fg)" }}>
                 {margen === null || margenPct === null ? (
                   <span style={{ color: "var(--color-text-secondary)", fontWeight: 800 }}>
                     — (mezcla de monedas)

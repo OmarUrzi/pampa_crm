@@ -208,25 +208,25 @@ export function EstadisticasPage() {
         l: "Cobros (OK)",
         v: `${money("USD", ingresos.USD.ok)} · ${money("ARS", ingresos.ARS.ok)}`,
         sub: "en el período",
-        bg: "#FEF0EA",
+        bg: "var(--color-primary-subtle)",
       },
       {
         l: "Cobros pendientes",
         v: `${money("USD", ingresos.USD.pending)} · ${money("ARS", ingresos.ARS.pending)}`,
         sub: "por cobrar",
-        bg: "#EDF5FF",
+        bg: "var(--color-info-bg)",
       },
       {
         l: "Eventos con cobros pendientes",
         v: `${eventosRows.filter((x) => x.pendientes > 0).length}`,
         sub: "a seguir",
-        bg: "#FFF8EC",
+        bg: "var(--color-warning-bg)",
       },
       {
         l: "Rating prom. proveedores",
         v: provRating === null ? "—" : `${provRating.toFixed(2)} ★`,
         sub: "sobre pedidos respondidos",
-        bg: anyOk ? "#E6F5F0" : "#F1EFE8",
+        bg: anyOk ? "var(--color-success-bg)" : "var(--color-neutral-bg)",
       },
     ];
   }, [eventosRows, ingresos, proveedoresStats]);
@@ -316,11 +316,22 @@ export function EstadisticasPage() {
       {tab === "resumen" ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 22 }}>
           {prs.map((x) => (
-            <div key={x.l} style={{ borderRadius: 12, padding: "14px 16px", background: x.bg }}>
+            <div
+              key={x.l}
+              style={{
+                borderRadius: 12,
+                padding: "14px 16px",
+                background: x.bg,
+                color: "var(--color-text-primary)",
+                border: "0.5px solid var(--color-border-tertiary)",
+              }}
+            >
               <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8, fontWeight: 700 }}>
                 {x.l}
               </div>
-              <div style={{ fontSize: 21, fontWeight: 700, fontFamily: "var(--font-serif)" }}>{x.v}</div>
+              <div style={{ fontSize: 21, fontWeight: 700, fontFamily: "var(--font-serif)", color: "var(--color-text-primary)" }}>
+                {x.v}
+              </div>
               <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 4 }}>{x.sub}</div>
             </div>
           ))}
@@ -354,7 +365,7 @@ export function EstadisticasPage() {
                       {r.respAvgDays === null ? (
                         "—"
                       ) : (
-                        <Pill style={{ background: "#E1F5EE", color: "#0E6B52" }}>
+                        <Pill style={{ background: "var(--color-success-bg)", color: "var(--color-success-fg)" }}>
                           {r.respAvgDays.toFixed(1)} días
                         </Pill>
                       )}
@@ -441,11 +452,11 @@ export function EstadisticasPage() {
                     <td style={tdStyle}>{e.fecha}</td>
                     <td style={tdStyle}>
                       {e.pendientes ? (
-                        <Pill style={{ background: "#FAECE7", color: "#8E2E12" }}>
+                        <Pill style={{ background: "var(--color-danger-bg)", color: "var(--color-danger-fg)" }}>
                           {e.pendientes}
                         </Pill>
                       ) : (
-                        <Pill style={{ background: "#E1F5EE", color: "#0E6B52" }}>0</Pill>
+                        <Pill style={{ background: "var(--color-success-bg)", color: "var(--color-success-fg)" }}>0</Pill>
                       )}
                     </td>
                     <td style={tdStyle}>

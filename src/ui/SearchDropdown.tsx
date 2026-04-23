@@ -150,7 +150,8 @@ export function SearchDropdown({
                       textAlign: "left",
                       border: "none",
                       cursor: "pointer",
-                      background: isActive ? "rgba(15,23,42,0.04)" : "transparent",
+                      background: isActive ? "var(--color-primary-subtle)" : "transparent",
+                      color: "var(--color-text-primary)",
                       padding: "9px 10px",
                       borderRadius: 10,
                       display: "flex",
@@ -160,7 +161,15 @@ export function SearchDropdown({
                     }}
                   >
                     <span style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 900,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          color: "var(--color-text-primary)",
+                        }}
+                      >
                         {it.label}
                       </div>
                       {it.sublabel ? (

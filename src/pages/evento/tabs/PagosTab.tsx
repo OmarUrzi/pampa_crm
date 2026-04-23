@@ -33,26 +33,37 @@ export function PagosTab({ eventoId }: { eventoId: string }) {
     .reduce((s, p) => s + p.monto, 0);
 
   const mcs = [
-    { l: "Total cotizado", v: money(cur, totalCotizado), bg: "#FEF0EA" },
-    { l: "Cobrado", v: money(cur, cobrado), bg: "#E6F5F0" },
-    { l: "Pendiente cliente", v: money(cur, pendienteCliente), bg: "#FFF8EC" },
-    { l: "A pagar proveedores", v: money(cur, aPagarProv), bg: "#EDF5FF" },
+    { l: "Total cotizado", v: money(cur, totalCotizado), bg: "var(--color-primary-subtle)" },
+    { l: "Cobrado", v: money(cur, cobrado), bg: "var(--color-success-bg)" },
+    { l: "Pendiente cliente", v: money(cur, pendienteCliente), bg: "var(--color-warning-bg)" },
+    { l: "A pagar proveedores", v: money(cur, aPagarProv), bg: "var(--color-info-bg)" },
   ];
 
   function rowStatus(p: Pago) {
-    if (p.ok) return { label: "Pagado", bg: "#E6F5F0", fg: "#0F6E56" };
-    return { label: "Pendiente", bg: "#FFF8EC", fg: "#D97706" };
+    if (p.ok) return { label: "Pagado", bg: "var(--color-success-bg)", fg: "var(--color-success-fg)" };
+    return { label: "Pendiente", bg: "var(--color-warning-bg)", fg: "var(--color-warning-fg)" };
   }
 
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 20 }}>
         {mcs.map((x) => (
-          <div key={x.l} style={{ borderRadius: 12, padding: "14px 16px", background: x.bg }}>
+          <div
+            key={x.l}
+            style={{
+              borderRadius: 12,
+              padding: "14px 16px",
+              background: x.bg,
+              color: "var(--color-text-primary)",
+              border: "0.5px solid var(--color-border-tertiary)",
+            }}
+          >
             <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8, fontWeight: 700 }}>
               {x.l}
             </div>
-            <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-serif)" }}>{x.v}</div>
+            <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-serif)", color: "var(--color-text-primary)" }}>
+              {x.v}
+            </div>
           </div>
         ))}
       </div>
