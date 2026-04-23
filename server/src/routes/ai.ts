@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { prisma } from "../prisma";
+import { prisma } from "../prisma.js";
 
 // Placeholder: la fase real llamará a un modelo (Claude/GPT) con herramientas/datos.
 export async function registerAiRoutes(app: FastifyInstance) {

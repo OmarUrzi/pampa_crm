@@ -6,20 +6,20 @@ import cookie from "@fastify/cookie";
 import jwt from "@fastify/jwt";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
-import { env } from "./config";
-import { registerAuthRoutes } from "./routes/auth";
-import { registerEventoRoutes } from "./routes/eventos";
-import { registerCatalogoRoutes } from "./routes/catalogo";
-import { registerCotizacionesRoutes } from "./routes/cotizaciones";
-import { registerProveedoresRoutes } from "./routes/proveedores";
-import { registerPagosRoutes } from "./routes/pagos";
-import { registerCommsRoutes } from "./routes/comms";
-import { registerChatRoutes } from "./routes/chat";
-import { registerAuditRoutes } from "./routes/audit";
-import { registerSlidesRoutes } from "./routes/slides";
-import { registerAiRoutes } from "./routes/ai";
-import { registerAdminRoutes } from "./routes/admin";
-import { registerMailboxRoutes } from "./routes/mailboxes";
+import { env } from "./config.js";
+import { registerAuthRoutes } from "./routes/auth.js";
+import { registerEventoRoutes } from "./routes/eventos.js";
+import { registerCatalogoRoutes } from "./routes/catalogo.js";
+import { registerCotizacionesRoutes } from "./routes/cotizaciones.js";
+import { registerProveedoresRoutes } from "./routes/proveedores.js";
+import { registerPagosRoutes } from "./routes/pagos.js";
+import { registerCommsRoutes } from "./routes/comms.js";
+import { registerChatRoutes } from "./routes/chat.js";
+import { registerAuditRoutes } from "./routes/audit.js";
+import { registerSlidesRoutes } from "./routes/slides.js";
+import { registerAiRoutes } from "./routes/ai.js";
+import { registerAdminRoutes } from "./routes/admin.js";
+import { registerMailboxRoutes } from "./routes/mailboxes.js";
 
 const app = Fastify({
   logger: true,

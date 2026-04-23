@@ -1,10 +1,10 @@
 import type { FastifyInstance } from "fastify";
-import { prisma } from "../prisma";
-import { jwtVerifyGuard } from "../auth/jwtGuards";
-import { requireRole, requireWriteAccess } from "../auth/roleGuards";
+import { prisma } from "../prisma.js";
+import { jwtVerifyGuard } from "../auth/jwtGuards.js";
+import { requireRole, requireWriteAccess } from "../auth/roleGuards.js";
 import { google } from "googleapis";
-import { env } from "../config";
-import { decryptSecret } from "../google/crypto";
+import { env } from "../config.js";
+import { decryptSecret } from "../google/crypto.js";
 
 async function gmailClientForMailbox(mailboxId: string) {
   const mb = await prisma.googleMailbox.findUnique({ where: { id: mailboxId } });

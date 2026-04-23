@@ -3,6 +3,7 @@ import { Button, Chip, Pill } from "../ui/ui";
 import { useAppStore } from "../state/useAppStore";
 import { CatalogoActividadFormModal } from "../ui/CatalogoActividadFormModal";
 import { apiFetch } from "../api/client";
+import { apiListCatalogo } from "../api/catalogo";
 import { useCanEdit } from "../auth/perms";
 import { useAuthGate } from "../auth/useAuthGate";
 
@@ -18,6 +19,7 @@ const CATCOL: Record<string, string> = {
 
 export function CatalogoPage() {
   const actividades = useAppStore((s) => s.catalogo);
+  const setCatalogo = useAppStore((s) => s.setCatalogo);
   const canEdit = useCanEdit();
   const gate = useAuthGate();
   const [catFilter, setCatFilter] = useState("Todos");

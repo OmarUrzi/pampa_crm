@@ -41,6 +41,8 @@ export function CatalogoActividadFormModal({
   onSaved?: () => void | Promise<void>;
 }) {
   const proveedores = useAppStore((s) => s.proveedores);
+  const actividades = useAppStore((s) => s.catalogo);
+  const setCatalogo = useAppStore((s) => s.setCatalogo);
   const canEdit = useCanEdit();
   const gate = useAuthGate();
 
@@ -59,6 +61,26 @@ export function CatalogoActividadFormModal({
 
   const canDelete = mode === "edit" && !!initial;
 
+  async function afterSavedSafe() {
+    try {
+      await onSaved?.();
+    } catch {
+      // ignore (UI already updated optimistically)
+    }
+  }
+
+  function mapToStore(a: any): CatalogoActividad {
+    return {
+      id: a.id,
+      nombre: a.nombre,
+      descripcion: a.descripcion ?? "",
+      categoria: a.categoria,
+      precioUsd: a.precioUsd ?? 0,
+      proveedorSugerido: a.proveedorTxt ?? "—",
+      fotos: (a.fotos ?? []).map((f: any) => f.url),
+    };
+  }
+
   function save() {
     const prov = proveedores.find((p) => p.id === f.proveedorId);
     const payload = {
@@ -75,22 +97,24 @@ export function CatalogoActividadFormModal({
 
     void gate.run(async () => {
       if (mode === "create") {
-        await apiCreateActividad(payload);
-        await onSaved?.();
-        gate.info("Actividad creada.");
+        const res = await apiCreateActividad(payload);
+        const created = mapToStore(res.actividad);
+        setCatalogo([created, ...actividades]);
+        await afterSavedSafe();
         onClose();
         return;
       }
       if (!initial) return;
-      await apiPatchActividad(initial.id, {
+      const res = await apiPatchActividad(initial.id, {
         nombre: payload.nombre,
         descripcion: payload.descripcion,
         categoria: payload.categoria,
         precioUsd: payload.precioUsd,
         proveedorTxt: payload.proveedorTxt ?? null,
       });
-      await onSaved?.();
-      gate.info("Actividad actualizada.");
+      const updated = mapToStore(res.actividad);
+      setCatalogo(actividades.map((x) => (x.id === updated.id ? updated : x)));
+      await afterSavedSafe();
       onClose();
     });
   }
@@ -108,8 +132,8 @@ export function CatalogoActividadFormModal({
                 if (!initial) return;
                 void gate.run(async () => {
                   await apiDeleteActividad(initial.id);
-                  await onSaved?.();
-                  gate.info("Actividad eliminada.");
+                  setCatalogo(actividades.filter((x) => x.id !== initial.id));
+                  await afterSavedSafe();
                   onClose();
                 });
               }}

@@ -1,9 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { prisma } from "../prisma";
-import { jwtVerifyGuard } from "../auth/jwtGuards";
-import { requireRole } from "../auth/roleGuards";
-import { auditLog } from "../audit";
+import { prisma } from "../prisma.js";
+import { jwtVerifyGuard } from "../auth/jwtGuards.js";
+import { requireRole } from "../auth/roleGuards.js";
+import { auditLog } from "../audit.js";
 
 export async function registerAdminRoutes(app: FastifyInstance) {
   app.get("/admin/users", { preHandler: [jwtVerifyGuard, requireRole(["admin"])] }, async () => {

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { prisma } from "../prisma";
-import { jwtVerifyGuard } from "../auth/jwtGuards";
+import { prisma } from "../prisma.js";
+import { jwtVerifyGuard } from "../auth/jwtGuards.js";
 
 export async function registerAuditRoutes(app: FastifyInstance) {
   // Solo autenticado: es información sensible.

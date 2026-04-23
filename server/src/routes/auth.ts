@@ -1,10 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import oauthPlugin from "@fastify/oauth2";
 import crypto from "node:crypto";
-import { allowedEmails, env } from "../config";
-import { prisma } from "../prisma";
+import { allowedEmails, env } from "../config.js";
+import { prisma } from "../prisma.js";
 import { google } from "googleapis";
-import { encryptSecret } from "../google/crypto";
+import { encryptSecret } from "../google/crypto.js";
 
 const REFRESH_COOKIE = "pampa-crm:refresh";
 
@@ -185,7 +185,16 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         id: env.GOOGLE_CLIENT_ID,
         secret: env.GOOGLE_CLIENT_SECRET,
       },
-      auth: oauthPlugin.GOOGLE_CONFIGURATION,
+      // fastify-oauth2 typings differ by version; keep runtime-compatible fallback.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      auth:
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ((oauthPlugin as any).GOOGLE_CONFIGURATION as any) ?? {
+          authorizeHost: "https://accounts.google.com",
+          authorizePath: "/o/oauth2/v2/auth",
+          tokenHost: "https://oauth2.googleapis.com",
+          tokenPath: "/token",
+        },
     },
     startRedirectPath: "/auth/google",
     callbackUri: env.GOOGLE_CALLBACK_URL,

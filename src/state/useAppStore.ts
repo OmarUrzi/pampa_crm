@@ -225,7 +225,6 @@ export const useAppStore = create<AppState>(() => ({
     (async () => {
       try {
         await patchEvento(id, { status });
-        useNoticeStore.getState().show("Estado actualizado.", { variant: "info", ttlMs: 1200 });
       } catch {
         // Si falla (ej 401), re-sync desde API para no quedar inconsistente
         try {
@@ -285,16 +284,7 @@ export const useAppStore = create<AppState>(() => ({
         },
       };
     });
-    const s = useAppStore.getState();
-    savePersisted<Persisted>({
-      activeUser: s.activeUser,
-      eventos: s.eventos,
-      cotizacionesByEventoId: s.cotizacionesByEventoId,
-      proveedoresPedidosByEventoId: s.proveedoresPedidosByEventoId,
-      pagosByEventoId: s.pagosByEventoId,
-      commsByEventoId: s.commsByEventoId,
-      chatByEventoId: s.chatByEventoId,
-    });
+    persistAll();
   },
   setCotizacionesForEvento: (eventoId, versions) => {
     useAppStore.setState((s) => ({
@@ -328,16 +318,7 @@ export const useAppStore = create<AppState>(() => ({
         ),
       },
     }));
-    const s = useAppStore.getState();
-    savePersisted<Persisted>({
-      activeUser: s.activeUser,
-      eventos: s.eventos,
-      cotizacionesByEventoId: s.cotizacionesByEventoId,
-      proveedoresPedidosByEventoId: s.proveedoresPedidosByEventoId,
-      pagosByEventoId: s.pagosByEventoId,
-      commsByEventoId: s.commsByEventoId,
-      chatByEventoId: s.chatByEventoId,
-    });
+    persistAll();
   },
   addCotizacionItem: (eventoId, versionId, data) => {
     const id = `ci-${Date.now()}`;
@@ -349,16 +330,7 @@ export const useAppStore = create<AppState>(() => ({
         ),
       },
     }));
-    const s = useAppStore.getState();
-    savePersisted<Persisted>({
-      activeUser: s.activeUser,
-      eventos: s.eventos,
-      cotizacionesByEventoId: s.cotizacionesByEventoId,
-      proveedoresPedidosByEventoId: s.proveedoresPedidosByEventoId,
-      pagosByEventoId: s.pagosByEventoId,
-      commsByEventoId: s.commsByEventoId,
-      chatByEventoId: s.chatByEventoId,
-    });
+    persistAll();
     return id;
   },
   removeCotizacionItem: (eventoId, versionId, itemId) => {
@@ -370,16 +342,7 @@ export const useAppStore = create<AppState>(() => ({
         ),
       },
     }));
-    const s = useAppStore.getState();
-    savePersisted<Persisted>({
-      activeUser: s.activeUser,
-      eventos: s.eventos,
-      cotizacionesByEventoId: s.cotizacionesByEventoId,
-      proveedoresPedidosByEventoId: s.proveedoresPedidosByEventoId,
-      pagosByEventoId: s.pagosByEventoId,
-      commsByEventoId: s.commsByEventoId,
-      chatByEventoId: s.chatByEventoId,
-    });
+    persistAll();
   },
   addCatalogoActividad: (data) => {
     const id = `act-${Date.now()}`;

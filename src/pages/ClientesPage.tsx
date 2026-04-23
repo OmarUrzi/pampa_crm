@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useAppStore } from "../state/useAppStore";
 import { Button, Pill } from "../ui/ui";
 import { ClienteFormModal } from "../ui/ClienteFormModal";
+import { Modal } from "../ui/Modal";
 
 type ClienteVm = {
   id: string;
@@ -47,6 +48,7 @@ export function ClientesPage() {
   const clientesStore = useAppStore((s) => s.clientes);
   const [showNew, setShowNew] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [viewId, setViewId] = useState<string | null>(null);
   const [q, setQ] = useState("");
 
   const clientes = useMemo<ClienteVm[]>(() => {
@@ -83,6 +85,16 @@ export function ClientesPage() {
   }, [clientes, q]);
 
   const editing = editId ? clientesStore.find((c) => c.id === editId) : undefined;
+  const viewing = viewId ? clientesStore.find((c) => c.id === viewId) : undefined;
+  const viewingVm = viewId ? filtered.find((c) => c.id === viewId) : undefined;
+
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // ignore (some browsers block clipboard on http or without user gesture)
+    }
+  }
 
   return (
     <div>
@@ -161,6 +173,13 @@ export function ClientesPage() {
                 </strong>
               </span>
               <div style={{ display: "flex", gap: 8 }}>
+                <Button
+                  type="button"
+                  style={{ fontSize: 11, padding: "6px 10px" }}
+                  onClick={() => setViewId(c.id)}
+                >
+                  Ver
+                </Button>
                 <Button type="button" style={{ fontSize: 11, padding: "6px 10px" }} onClick={() => setEditId(c.id)}>
                   Editar
                 </Button>
@@ -194,6 +213,116 @@ export function ClientesPage() {
             // se actualiza in-place
           }}
         />
+      ) : null}
+
+      {viewing && viewingVm ? (
+        <Modal
+          title={viewingVm.empresa}
+          onClose={() => setViewId(null)}
+          footer={
+            <>
+              <Button type="button" onClick={() => setViewId(null)}>
+                Cerrar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setViewId(null);
+                  setEditId(viewing.id);
+                }}
+              >
+                Editar
+              </Button>
+              <Link to={`/eventos?q=${encodeURIComponent(viewingVm.empresa)}`}>
+                <Button type="button">Ver eventos</Button>
+              </Link>
+            </>
+          }
+        >
+          <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <Pill style={{ background: "var(--color-background-secondary)", color: "var(--color-text-secondary)" }}>
+                {viewingVm.eventos} eventos
+              </Pill>
+              <Pill style={{ background: "var(--color-background-secondary)", color: "var(--color-text-secondary)" }}>
+                Facturado: {viewingVm.facturadoUsd > 0 ? `U$D ${viewingVm.facturadoUsd.toLocaleString("en-US")}` : "—"}
+              </Pill>
+            </div>
+
+            <div style={{ borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: 10 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 900,
+                  color: "var(--color-text-secondary)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.07em",
+                  marginBottom: 8,
+                }}
+              >
+                Contactos
+              </div>
+
+              {viewing.contactos.length ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {viewing.contactos.map((ct) => (
+                    <div
+                      key={ct.id}
+                      style={{
+                        border: "0.5px solid var(--color-border-tertiary)",
+                        borderRadius: 12,
+                        padding: 10,
+                        background: "var(--color-background-primary)",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        {avatar(ct.nombre, "rgba(59,130,246,0.15)", "#3B82F6")}
+                        <div style={{ display: "grid", gap: 2 }}>
+                          <div style={{ fontSize: 12, fontWeight: 800 }}>{ct.nombre}</div>
+                          <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>
+                            {ct.cargo ?? "—"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Email:</span>
+                          <span style={{ fontSize: 12, fontWeight: 700 }}>{ct.email ?? "—"}</span>
+                          {ct.email ? (
+                            <Button
+                              type="button"
+                              style={{ fontSize: 11, padding: "5px 9px" }}
+                              onClick={() => void copy(ct.email!)}
+                            >
+                              Copiar
+                            </Button>
+                          ) : null}
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Tel:</span>
+                          <span style={{ fontSize: 12, fontWeight: 700 }}>{ct.telefono ?? "—"}</span>
+                          {ct.telefono ? (
+                            <Button
+                              type="button"
+                              style={{ fontSize: 11, padding: "5px 9px" }}
+                              onClick={() => void copy(ct.telefono!)}
+                            >
+                              Copiar
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Sin contactos cargados</div>
+              )}
+            </div>
+          </div>
+        </Modal>
       ) : null}
     </div>
   );

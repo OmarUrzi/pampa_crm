@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { prisma } from "../prisma";
-import { jwtVerifyGuard } from "../auth/jwtGuards";
-import { auditLog } from "../audit";
+import { prisma } from "../prisma.js";
+import { jwtVerifyGuard } from "../auth/jwtGuards.js";
+import { auditLog } from "../audit.js";
 
 export async function registerChatRoutes(app: FastifyInstance) {
   app.post("/eventos/:eventoId/chat", { preHandler: jwtVerifyGuard }, async (req, reply) => {

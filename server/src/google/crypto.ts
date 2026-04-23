@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { env } from "../config";
+import { env } from "../config.js";
 
 function key() {
   // Derive a stable 32-byte key from JWT_SECRET (not ideal, but works for now).

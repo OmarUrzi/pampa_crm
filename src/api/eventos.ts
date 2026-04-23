@@ -93,6 +93,25 @@ export async function fetchEventoDetail(eventoId: string) {
   return await withRetry(() => apiFetch<ApiEventoDetail>(`/eventos/${eventoId}`), { attempts: 2 });
 }
 
+export async function apiCreateEvento(input: {
+  empresaNombre: string;
+  sector?: string;
+  nombre: string;
+  contactoRef?: string;
+  locacion: string;
+  fechaLabel: string;
+  pax: number;
+  status: string;
+  currency: string;
+  responsable: string;
+  tipo: string;
+}) {
+  return await apiFetch<{ evento: ApiEventoDetail["evento"] }>("/eventos", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export async function patchEvento(
   eventoId: string,
   patch: Partial<{

@@ -1,9 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { prisma } from "../prisma";
-import { jwtVerifyGuard } from "../auth/jwtGuards";
-import { requireWriteAccess } from "../auth/roleGuards";
-import { auditLog } from "../audit";
+import { prisma } from "../prisma.js";
+import { jwtVerifyGuard } from "../auth/jwtGuards.js";
+import { requireWriteAccess } from "../auth/roleGuards.js";
+import { auditLog } from "../audit.js";
 
 export async function registerPagosRoutes(app: FastifyInstance) {
   app.post("/eventos/:eventoId/pagos", { preHandler: [jwtVerifyGuard, requireWriteAccess()] }, async (req, reply) => {

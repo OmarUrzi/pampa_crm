@@ -5,6 +5,10 @@ import { Button } from "./ui";
 import { Modal } from "./Modal";
 import { ClienteFormModal } from "./ClienteFormModal";
 import { SearchDropdown } from "./SearchDropdown";
+import { apiCreateEvento, fetchEventos, patchEvento } from "../api/eventos";
+import { useAuthGate } from "../auth/useAuthGate";
+import { useCanEdit } from "../auth/perms";
+import { useNoticeStore } from "../state/useNoticeStore";
 
 type FormState = {
   nombre: string;
@@ -50,6 +54,10 @@ export function EventoFormModal({
   const clientes = useAppStore((s) => s.clientes);
   const addEvento = useAppStore((s) => s.addEvento);
   const updateEvento = useAppStore((s) => s.updateEvento);
+  const setEventos = useAppStore((s) => s.setEventos);
+  const gate = useAuthGate();
+  const canEdit = useCanEdit();
+  const notice = useNoticeStore((s) => s);
 
   const [f, setF] = useState<FormState>(() => {
     if (mode === "edit" && initial) return toForm(initial);
@@ -67,6 +75,7 @@ export function EventoFormModal({
     };
   });
   const [showNewCliente, setShowNewCliente] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const error = useMemo(() => {
     if (!f.nombre.trim()) return "Falta el nombre del evento.";
@@ -92,8 +101,14 @@ export function EventoFormModal({
     setF((s) => ({ ...s, [k]: v }));
   }
 
-  function save() {
+  async function save() {
     if (error) return;
+    if (!canEdit) {
+      notice.show("No tenés permisos para editar.", { variant: "warning", ttlMs: 2500 });
+      return;
+    }
+    if (!gate.ensureAuthed()) return;
+
     const paxRaw = f.pax.trim();
     const pax = paxRaw ? Number(paxRaw) : 0;
     const paxSafe = Number.isFinite(pax) && pax >= 0 ? pax : 0;
@@ -101,7 +116,9 @@ export function EventoFormModal({
     if (mode === "create") {
       const cliente = clientes.find((c) => c.id === f.clienteId);
       const contacto = cliente?.contactos.find((c) => c.id === f.contactoId);
-      const id = addEvento({
+
+      // Optimistic local create for snappy UX; replaced after API refresh.
+      const tmpId = addEvento({
         nombre: f.nombre.trim(),
         empresa: cliente?.nombre ?? "—",
         contacto: contacto?.nombre ?? "—",
@@ -117,8 +134,56 @@ export function EventoFormModal({
         resp: f.resp,
         tipo: f.tipo.trim() || "—",
       });
-      onSaved(id);
-      onClose();
+
+      setBusy(true);
+      try {
+        await gate.run(async () => {
+          await apiCreateEvento({
+            empresaNombre: cliente?.nombre ?? "—",
+            sector: cliente?.sector ?? undefined,
+            nombre: f.nombre.trim(),
+            contactoRef: contacto?.nombre ?? undefined,
+            locacion: f.locacion.trim() || "Bariloche",
+            fechaLabel: f.fecha.trim() || "—",
+            pax: paxSafe,
+            status: f.status,
+            currency: f.cur,
+            responsable: f.resp,
+            tipo: f.tipo.trim() || "—",
+          });
+
+          const res = await fetchEventos();
+          setEventos(
+            res.eventos.map((e) => ({
+              id: e.id,
+              nombre: e.nombre,
+              empresa: e.empresa?.nombre ?? "—",
+              contacto: e.contactoRef ?? "—",
+              locacion: e.locacion ?? "—",
+              fecha: e.fechaLabel,
+              pax: e.pax ?? 0,
+              status: e.status as any,
+              cur: e.currency === "ARS" ? "ARS" : "USD",
+              cotizado: e.cotizadoTotal ?? 0,
+              costo: e.costoEstimado ?? 0,
+              resp: (e.responsable as any) ?? "Laura",
+              tipo: e.tipo ?? "—",
+            })),
+          );
+        });
+
+        notice.show("Evento creado.", { variant: "info", ttlMs: 1600 });
+        onSaved(tmpId);
+        onClose();
+      } catch (e: any) {
+        // If API create fails, keep optimistic event but let user know.
+        notice.show(e?.message ? String(e.message) : "No se pudo crear el evento.", {
+          variant: "error",
+          ttlMs: 3500,
+        });
+      } finally {
+        setBusy(false);
+      }
       return;
     }
 
@@ -139,6 +204,32 @@ export function EventoFormModal({
       resp: f.resp,
       tipo: f.tipo.trim() || "—",
     });
+
+    setBusy(true);
+    try {
+      await gate.run(async () => {
+        await patchEvento(initial.id, {
+          nombre: f.nombre.trim(),
+          contactoRef: contacto?.nombre ?? null,
+          locacion: f.locacion.trim() || "Bariloche",
+          fechaLabel: f.fecha.trim() || "—",
+          pax: paxSafe,
+          status: f.status,
+          currency: f.cur,
+          responsable: f.resp,
+          tipo: f.tipo.trim() || "—",
+        });
+      });
+      notice.show("Evento actualizado.", { variant: "info", ttlMs: 1400 });
+    } catch (e: any) {
+      notice.show(e?.message ? String(e.message) : "No se pudo actualizar el evento.", {
+        variant: "error",
+        ttlMs: 3500,
+      });
+    } finally {
+      setBusy(false);
+    }
+
     onSaved(initial.id);
     onClose();
   }
@@ -152,8 +243,8 @@ export function EventoFormModal({
           <Button type="button" onClick={onClose}>
             Cancelar
           </Button>
-          <Button variant="primary" type="button" onClick={save} disabled={!!error}>
-            Guardar
+          <Button variant="primary" type="button" onClick={save} disabled={!!error || busy}>
+            {busy ? "Guardando…" : "Guardar"}
           </Button>
         </>
       }

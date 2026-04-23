@@ -1,5 +1,5 @@
 import type { FastifyRequest } from "fastify";
-import { prisma } from "./prisma";
+import { prisma } from "./prisma.js";
 import { Prisma } from "@prisma/client";
 
 export type AuditAction =
