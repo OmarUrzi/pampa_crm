@@ -5,6 +5,7 @@ import { requireRole, requireWriteAccess } from "../auth/roleGuards.js";
 import { google } from "googleapis";
 import { env } from "../config.js";
 import { decryptSecret } from "../google/crypto.js";
+import { triggerBackfillAllForMailbox, triggerBackfillForEmailAcrossMailboxes } from "../services/gmailBackfill.js";
 
 async function gmailClientForMailbox(mailboxId: string) {
   const mb = await prisma.googleMailbox.findUnique({ where: { id: mailboxId } });
@@ -152,6 +153,29 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
     });
     return { mailboxes };
   });
+
+  app.post(
+    "/mailboxes/:id/backfill-all",
+    { preHandler: [jwtVerifyGuard, requireRole(["admin"])] },
+    async (req, reply) => {
+      const id = (req.params as { id: string }).id;
+      const mb = await prisma.googleMailbox.findUnique({ where: { id } });
+      if (!mb || mb.deletedAt) return reply.code(404).send({ error: "not_found" });
+      triggerBackfillAllForMailbox(id, app.log);
+      return reply.send({ ok: true, queued: true });
+    },
+  );
+
+  app.post(
+    "/mailboxes/backfill",
+    { preHandler: [jwtVerifyGuard, requireRole(["admin"])] },
+    async (req, reply) => {
+      const email = String((req.body as any)?.email ?? "").trim().toLowerCase();
+      if (!email) return reply.code(400).send({ error: "email_required" });
+      triggerBackfillForEmailAcrossMailboxes(email, app.log);
+      return reply.send({ ok: true, queued: true });
+    },
+  );
 
   app.post(
     "/mailboxes/:id/sync",

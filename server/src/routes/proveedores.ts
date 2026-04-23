@@ -4,6 +4,7 @@ import { prisma } from "../prisma.js";
 import { jwtVerifyGuard } from "../auth/jwtGuards.js";
 import { requireWriteAccess } from "../auth/roleGuards.js";
 import { auditLog } from "../audit.js";
+import { triggerBackfillForEmailAcrossMailboxes } from "../services/gmailBackfill.js";
 
 export async function registerProveedoresRoutes(app: FastifyInstance) {
   app.get("/proveedores", async () => {
@@ -77,6 +78,11 @@ export async function registerProveedoresRoutes(app: FastifyInstance) {
       data: body,
     });
 
+    // Best-effort: backfill Gmail for newly created provider contact emails.
+    for (const c of body.contactos ?? []) {
+      if (c.email) triggerBackfillForEmailAcrossMailboxes(c.email, app.log);
+    }
+
     return reply.code(201).send({ proveedor });
   });
 
@@ -144,6 +150,11 @@ export async function registerProveedoresRoutes(app: FastifyInstance) {
       summary: `Proveedor actualizado: ${proveedorWithContactos.nombre}`,
       data: body,
     });
+
+    // Best-effort: backfill Gmail for provided provider contact emails.
+    for (const c of body.contactos ?? []) {
+      if (c.email) triggerBackfillForEmailAcrossMailboxes(c.email, app.log);
+    }
 
     return reply.send({ proveedor: proveedorWithContactos });
   });

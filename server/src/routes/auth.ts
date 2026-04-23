@@ -5,6 +5,7 @@ import { allowedEmails, env } from "../config.js";
 import { prisma } from "../prisma.js";
 import { google } from "googleapis";
 import { encryptSecret } from "../google/crypto.js";
+import { triggerBackfillAllForMailbox } from "../services/gmailBackfill.js";
 
 const REFRESH_COOKIE = "pampa-crm:refresh";
 
@@ -189,6 +190,8 @@ export async function registerAuthRoutes(app: FastifyInstance) {
 
       // Enable push notifications (Pub/Sub) if configured.
       await tryEnableGmailWatch(gmail, mailbox.id, app.log);
+      // Best-effort backfill for all known CRM emails (runs in background).
+      triggerBackfillAllForMailbox(mailbox.id, app.log);
 
       const fe = env.FRONTEND_URL ?? "http://localhost:5173";
       return reply.redirect(`${fe.replace(/\/$/, "")}/admin/mailboxes?connected=1`, 302);

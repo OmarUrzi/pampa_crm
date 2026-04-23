@@ -4,6 +4,7 @@ import { prisma } from "../prisma.js";
 import { jwtVerifyGuard } from "../auth/jwtGuards.js";
 import { requireWriteAccess } from "../auth/roleGuards.js";
 import { auditLog } from "../audit.js";
+import { triggerBackfillForEmailAcrossMailboxes } from "../services/gmailBackfill.js";
 
 const contactoSchema = z.object({
   id: z.string().optional(),
@@ -67,6 +68,11 @@ export async function registerClienteRoutes(app: FastifyInstance) {
       summary: `Cliente creado: ${cliente.nombre}`,
       data: body,
     });
+
+    // Best-effort: if new emails were added, backfill Gmail for them.
+    for (const c of body.contactos ?? []) {
+      if (c.email) triggerBackfillForEmailAcrossMailboxes(c.email, app.log);
+    }
 
     return reply.code(201).send({ cliente });
   });
@@ -142,6 +148,11 @@ export async function registerClienteRoutes(app: FastifyInstance) {
       summary: `Cliente actualizado: ${cliente.nombre}`,
       data: body,
     });
+
+    // Best-effort: if emails were provided/updated, backfill Gmail for them.
+    for (const c of body.contactos ?? []) {
+      if (c.email) triggerBackfillForEmailAcrossMailboxes(c.email, app.log);
+    }
 
     return reply.send({ cliente });
   });
