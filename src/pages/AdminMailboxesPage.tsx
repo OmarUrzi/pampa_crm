@@ -33,11 +33,6 @@ export function AdminMailboxesPage() {
     };
   }, [isAdmin, run]);
 
-  async function refreshMailboxes() {
-    const res = await apiListMailboxes();
-    setMailboxes(res?.mailboxes ?? []);
-  }
-
   const connectUrl = useMemo(() => `${API_BASE}/auth/google-gmail`, []);
 
   if (!isAdmin) {
@@ -130,14 +125,7 @@ export function AdminMailboxesPage() {
                       void run(async () => {
                         setSyncingById((s) => ({ ...s, [m.id]: true }));
                         try {
-                          // optimistic: show "último sync" immediately
-                          setMailboxes((prev) =>
-                            prev.map((x) =>
-                              x.id === m.id ? { ...x, lastSyncAt: new Date().toISOString() } : x,
-                            ),
-                          );
                           await apiSyncMailbox(m.id);
-                          await refreshMailboxes();
                         } finally {
                           setSyncingById((s) => ({ ...s, [m.id]: false }));
                         }
