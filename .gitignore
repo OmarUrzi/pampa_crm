@@ -11,3 +11,4 @@ server/.env.*
 playwright-report
 test-results
 .DS_Store
+.cursor-out.txt

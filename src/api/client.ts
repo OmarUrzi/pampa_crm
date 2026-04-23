@@ -71,12 +71,16 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const t = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
+    const hasBody = init?.body !== undefined && init?.body !== null;
+    const contentTypeHeader =
+      hasBody && !(init?.body instanceof FormData) ? { "content-type": "application/json" } : {};
+
     res = await fetch(url, {
       ...init,
       credentials: "include",
       signal: controller.signal,
       headers: {
-        "content-type": "application/json",
+        ...contentTypeHeader,
         ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...(init?.headers ?? {}),
       },
