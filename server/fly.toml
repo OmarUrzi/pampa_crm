@@ -1,11 +1,15 @@
-app = "pampa-crm-api"
+app = "pampa-crm"
 primary_region = "gru"
 
 [build]
   dockerfile = "Dockerfile"
 
+[processes]
+  app = "node dist/index.js"
+
 [http_service]
   internal_port = 8787
+  processes = ["app"]
   force_https = true
   auto_start_machines = true
   auto_stop_machines = "stop"
