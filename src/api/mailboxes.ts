@@ -7,7 +7,10 @@ export async function apiListMailboxes() {
 }
 
 export async function apiSyncMailbox(id: string) {
-  return await apiFetch<{ ok: boolean; upserted: number }>(`/mailboxes/${id}/sync`, { method: "POST" });
+  return await apiFetch<{ ok: boolean; upserted: number }>(`/mailboxes/${id}/sync`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
 }
 
 export async function apiMailboxCommsByEmail(email: string) {
