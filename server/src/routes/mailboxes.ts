@@ -148,7 +148,7 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
     const mailboxes = await prisma.googleMailbox.findMany({
       where: { deletedAt: null },
       orderBy: { createdAt: "desc" },
-      select: { id: true, email: true, createdAt: true, updatedAt: true },
+      select: { id: true, email: true, lastHistoryId: true, lastSyncAt: true, createdAt: true, updatedAt: true },
     });
     return { mailboxes };
   });
@@ -205,12 +205,33 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
 
     try {
       const relevant = await loadRelevantEmailsSet();
-      const h = await c.gmail.users.history.list({
-        userId: "me",
-        startHistoryId,
-        historyTypes: ["messageAdded"],
-        maxResults: 50,
-      });
+      let h: any;
+      try {
+        h = await c.gmail.users.history.list({
+          userId: "me",
+          startHistoryId,
+          historyTypes: ["messageAdded"],
+          maxResults: 50,
+        });
+      } catch (e: any) {
+        // If history is too old/invalid, fall back to a small recent sync.
+        const msg = String(e?.message ?? "");
+        const code = Number(e?.code ?? 0);
+        const isHistoryInvalid = code === 404 || /startHistoryId/i.test(msg) || /history/i.test(msg);
+        if (!isHistoryInvalid) throw e;
+        const list = await c.gmail.users.messages.list({ userId: "me", maxResults: 25, q: "newer_than:10d" });
+        const ids = (list.data.messages ?? []).map((m: any) => m.id).filter(Boolean) as string[];
+        for (const id of ids) {
+          await ingestMessage(c.gmail, mailbox.id, id, relevant);
+        }
+        const prof = await c.gmail.users.getProfile({ userId: "me" });
+        const hid = prof.data.historyId ? String(prof.data.historyId) : null;
+        await prisma.googleMailbox.update({
+          where: { id: mailbox.id },
+          data: { lastHistoryId: hid, lastSyncAt: new Date() },
+        });
+        return reply.send({ ok: true });
+      }
       const added = new Set<string>();
       for (const it of h.data.history ?? []) {
         for (const m of it.messagesAdded ?? []) {

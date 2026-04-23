@@ -3,6 +3,10 @@ import type { Cliente, Contacto } from "../types";
 import { useAppStore } from "../state/useAppStore";
 import { Button } from "./ui";
 import { Modal } from "./Modal";
+import { apiCreateCliente, apiPatchCliente } from "../api/clientes";
+import { useAuthGate } from "../auth/useAuthGate";
+import { useCanEdit } from "../auth/perms";
+import { useNoticeStore } from "../state/useNoticeStore";
 
 type FormState = {
   nombre: string;
@@ -43,6 +47,12 @@ export function ClienteFormModal({
 }) {
   const addCliente = useAppStore((s) => s.addCliente);
   const updateCliente = useAppStore((s) => s.updateCliente);
+  const clientes = useAppStore((s) => s.clientes);
+  const setClientes = useAppStore((s) => s.setClientes);
+  const gate = useAuthGate();
+  const canEdit = useCanEdit();
+  const notice = useNoticeStore((s) => s);
+  const [busy, setBusy] = useState(false);
 
   const [f, setF] = useState<FormState>(() => {
     if (mode === "edit" && initial) return toForm(initial);
@@ -79,8 +89,14 @@ export function ClienteFormModal({
     setF((s) => ({ ...s, contactos: s.contactos.filter((_, i) => i !== idx) }));
   }
 
-  function save() {
+  async function save() {
     if (error) return;
+    if (busy) return;
+    if (!canEdit) {
+      notice.show("No tenés permisos para editar.", { variant: "warning", ttlMs: 2500 });
+      return;
+    }
+    if (!gate.ensureAuthed()) return;
 
     const contactos: Contacto[] = f.contactos
       .map((ct) => ({
@@ -92,25 +108,94 @@ export function ClienteFormModal({
       }))
       .filter((x) => x.nombre && x.nombre !== "—");
 
-    if (mode === "create") {
-      const id = addCliente({
+    setBusy(true);
+    try {
+      if (mode === "create") {
+        // optimistic local create
+        const tmpId = addCliente({
+          nombre: f.nombre.trim(),
+          sector: f.sector.trim() || undefined,
+          contactos,
+        });
+        onClose();
+
+        await gate.run(async () => {
+          const res = await apiCreateCliente({
+            nombre: f.nombre.trim(),
+            sector: f.sector.trim() || undefined,
+            contactos: contactos.map((ct) => ({
+              id: undefined,
+              nombre: ct.nombre,
+              cargo: ct.cargo,
+              email: ct.email,
+              telefono: ct.telefono,
+            })),
+          });
+          const created = res?.cliente;
+          if (created) {
+            const mapped: Cliente = {
+              id: created.id,
+              nombre: created.nombre,
+              sector: created.sector ?? undefined,
+              contactos: (created.contactos ?? []).map((ct) => ({
+                id: ct.id,
+                nombre: ct.nombre,
+                cargo: ct.cargo ?? undefined,
+                email: ct.email ?? undefined,
+                telefono: ct.telefono ?? undefined,
+              })),
+            };
+            setClientes([mapped, ...clientes.filter((c) => c.id !== tmpId)]);
+            onSaved(mapped.id);
+          } else {
+            onSaved(tmpId);
+          }
+        });
+        return;
+      }
+
+      if (!initial) return;
+      updateCliente(initial.id, {
         nombre: f.nombre.trim(),
         sector: f.sector.trim() || undefined,
         contactos,
       });
-      onSaved(id);
       onClose();
-      return;
-    }
 
-    if (!initial) return;
-    updateCliente(initial.id, {
-      nombre: f.nombre.trim(),
-      sector: f.sector.trim() || undefined,
-      contactos,
-    });
-    onSaved(initial.id);
-    onClose();
+      await gate.run(async () => {
+        const res = await apiPatchCliente(initial.id, {
+          nombre: f.nombre.trim(),
+          sector: f.sector.trim() || null,
+          contactos: contactos.map((ct) => ({
+            id: ct.id.startsWith("ct-") ? undefined : ct.id,
+            nombre: ct.nombre,
+            cargo: ct.cargo,
+            email: ct.email,
+            telefono: ct.telefono,
+          })),
+        });
+        const updated = res?.cliente;
+        if (updated) {
+          const mapped: Cliente = {
+            id: updated.id,
+            nombre: updated.nombre,
+            sector: updated.sector ?? undefined,
+            contactos: (updated.contactos ?? []).map((ct) => ({
+              id: ct.id,
+              nombre: ct.nombre,
+              cargo: ct.cargo ?? undefined,
+              email: ct.email ?? undefined,
+              telefono: ct.telefono ?? undefined,
+            })),
+          };
+          setClientes(clientes.map((c) => (c.id === mapped.id ? mapped : c)));
+        }
+      });
+
+      onSaved(initial.id);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -122,8 +207,8 @@ export function ClienteFormModal({
           <Button type="button" onClick={onClose}>
             Cancelar
           </Button>
-          <Button variant="primary" type="button" onClick={save} disabled={!!error}>
-            Guardar
+          <Button variant="primary" type="button" onClick={save} disabled={!!error || busy}>
+            {busy ? "Guardando…" : "Guardar"}
           </Button>
         </>
       }

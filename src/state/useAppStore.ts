@@ -42,6 +42,7 @@ type AppState = {
   chatByEventoId: Record<string, ChatMsg[]>;
   setActiveUser: (u: UserId) => void;
   setProveedores: (items: Proveedor[]) => void;
+  setClientes: (items: Cliente[]) => void;
   addCliente: (data: Omit<Cliente, "id">) => string;
   updateCliente: (id: string, patch: Partial<Pick<Cliente, "nombre" | "sector" | "contactos">>) => void;
   addContacto: (clienteId: string, data: Omit<Contacto, "id">) => string;
@@ -146,6 +147,10 @@ export const useAppStore = create<AppState>(() => ({
     },
   setProveedores: (items) => {
     useAppStore.setState({ proveedores: items });
+    persistAll();
+  },
+  setClientes: (items) => {
+    useAppStore.setState({ clientes: items });
     persistAll();
   },
   setActiveUser: (u) => {

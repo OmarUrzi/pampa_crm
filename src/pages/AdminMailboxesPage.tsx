@@ -8,7 +8,7 @@ import { Button, Pill } from "../ui/ui";
 export function AdminMailboxesPage() {
   const me = useAuthStore((s) => s.user);
   const isAdmin = (me?.role ?? "user") === "admin";
-  const { run, info } = useAuthGate();
+  const { run } = useAuthGate();
 
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,6 +102,20 @@ export function AdminMailboxesPage() {
                   <Pill style={{ background: "var(--color-background-secondary)", color: "var(--color-text-secondary)" }}>
                     connected
                   </Pill>
+                  {m.lastHistoryId ? (
+                    <Pill style={{ background: "#E6F5F0", color: "#0F6E56", marginLeft: 8 }}>
+                      watch ON
+                    </Pill>
+                  ) : (
+                    <Pill style={{ background: "#FFF8EC", color: "#854F0B", marginLeft: 8 }}>
+                      watch OFF
+                    </Pill>
+                  )}
+                  {m.lastSyncAt ? (
+                    <span style={{ marginLeft: 10, fontSize: 11, color: "var(--color-text-secondary)" }}>
+                      último sync: {new Date(m.lastSyncAt).toLocaleString()}
+                    </span>
+                  ) : null}
                 </td>
                 <td style={{ padding: "9px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
                   <Button
@@ -111,8 +125,7 @@ export function AdminMailboxesPage() {
                       void run(async () => {
                         setSyncingById((s) => ({ ...s, [m.id]: true }));
                         try {
-                          const res = await apiSyncMailbox(m.id);
-                          info(`Sync OK (${m.email}) · ${res?.upserted ?? 0} msgs`);
+                          await apiSyncMailbox(m.id);
                         } finally {
                           setSyncingById((s) => ({ ...s, [m.id]: false }));
                         }

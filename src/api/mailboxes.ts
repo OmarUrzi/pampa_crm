@@ -1,13 +1,20 @@
 import { apiFetch } from "./client";
 
-export type Mailbox = { id: string; email: string; createdAt: string; updatedAt: string };
+export type Mailbox = {
+  id: string;
+  email: string;
+  lastHistoryId: string | null;
+  lastSyncAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export async function apiListMailboxes() {
   return await apiFetch<{ mailboxes: Mailbox[] }>("/mailboxes");
 }
 
 export async function apiSyncMailbox(id: string) {
-  return await apiFetch<{ ok: boolean; upserted: number }>(`/mailboxes/${id}/sync`, {
+  return await apiFetch<{ ok: boolean; upserted: number; scanned?: number }>(`/mailboxes/${id}/sync`, {
     method: "POST",
     body: JSON.stringify({}),
     // Gmail sync can take longer than normal API requests.

@@ -20,6 +20,7 @@ import { registerSlidesRoutes } from "./routes/slides.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerMailboxRoutes } from "./routes/mailboxes.js";
+import { registerClienteRoutes } from "./routes/clientes.js";
 
 const app = Fastify({
   logger: true,
@@ -97,6 +98,7 @@ await registerSlidesRoutes(app);
 await registerAiRoutes(app);
 await registerAdminRoutes(app);
 await registerMailboxRoutes(app);
+await registerClienteRoutes(app);
 
 app.get("/health", async () => ({ ok: true }));
 

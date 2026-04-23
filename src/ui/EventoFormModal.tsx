@@ -191,7 +191,7 @@ export function EventoFormModal({
     if (!initial) return;
     const cliente = clientes.find((c) => c.id === f.clienteId);
     const contacto = cliente?.contactos.find((c) => c.id === f.contactoId);
-    const contactoRef = (contacto?.email ?? contacto?.nombre ?? "").trim() || null;
+      const contactoRef = (contacto?.email ?? contacto?.nombre ?? "").trim() || null;
     updateEvento(initial.id, {
       nombre: f.nombre.trim(),
       empresa: cliente?.nombre ?? "—",
