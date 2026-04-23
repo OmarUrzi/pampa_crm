@@ -1,8 +1,13 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { jwtVerifyGuard } from "../auth/jwtGuards.js";
-import { getAiProviderKey, callOpenAiChat, callAnthropicClaude } from "../services/aiProviders.js";
+import {
+  getAiProviderKey,
+  callOpenAiChat,
+  callAnthropicClaude,
+  AiUpstreamError,
+} from "../services/aiProviders.js";
 
 // Placeholder: la fase real llamará a un modelo (Claude/GPT) con herramientas/datos.
 export async function registerAiRoutes(app: FastifyInstance) {
@@ -29,7 +34,8 @@ export async function registerAiRoutes(app: FastifyInstance) {
     const schema = z.object({
       eventoId: z.string().min(1),
       prompt: z.string().min(1),
-      provider: z.enum(["openai", "anthropic"]).optional(),
+      /** `auto` = OpenAI primero (más barato); si cuota 429 y hay key de Anthropic, usa Claude. */
+      provider: z.enum(["openai", "anthropic", "auto"]).optional(),
     });
     const body = schema.parse(req.body);
 
@@ -122,26 +128,82 @@ export async function registerAiRoutes(app: FastifyInstance) {
       "Usá el contexto provisto para responder. Si falta info, preguntá 1-2 cosas puntuales.",
     ].join(" ");
 
-    const provider = body.provider ?? "openai";
+    const userContent = `Contexto JSON:\n${JSON.stringify(context)}\n\nPregunta:\n${body.prompt}`;
+    const openAiMessages = [
+      { role: "system" as const, content: system },
+      { role: "user" as const, content: userContent },
+    ];
+    const anthropicMessages = [{ role: "user" as const, content: userContent }];
+
+    const mode = body.provider ?? "auto";
+    let providerUsed: "openai" | "anthropic" = "openai";
+    let fallbackFromOpenAi = false;
     let answer = "";
-    if (provider === "openai") {
-      const apiKey = await getAiProviderKey("openai");
-      if (!apiKey) return reply.code(400).send({ error: "openai_not_configured" });
-      answer = await callOpenAiChat({
-        apiKey,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: `Contexto JSON:\n${JSON.stringify(context)}\n\nPregunta:\n${body.prompt}` },
-        ],
-      });
-    } else {
-      const apiKey = await getAiProviderKey("anthropic");
-      if (!apiKey) return reply.code(400).send({ error: "anthropic_not_configured" });
-      answer = await callAnthropicClaude({
-        apiKey,
-        system,
-        messages: [{ role: "user", content: `Contexto JSON:\n${JSON.stringify(context)}\n\nPregunta:\n${body.prompt}` }],
-      });
+
+    try {
+      if (mode === "anthropic") {
+        const apiKey = await getAiProviderKey("anthropic");
+        if (!apiKey) {
+          return reply.code(400).send({
+            error: "anthropic_not_configured",
+            message: "No hay API key de Anthropic. Configurala en Admin → IA o usá OpenAI.",
+          });
+        }
+        providerUsed = "anthropic";
+        answer = await callAnthropicClaude({
+          apiKey,
+          system,
+          messages: anthropicMessages,
+        });
+      } else if (mode === "openai") {
+        const apiKey = await getAiProviderKey("openai");
+        if (!apiKey) {
+          return reply.code(400).send({
+            error: "openai_not_configured",
+            message: "No hay API key de OpenAI. Configurala en Admin → IA o elegí Claude.",
+          });
+        }
+        providerUsed = "openai";
+        answer = await callOpenAiChat({ apiKey, messages: openAiMessages });
+      } else {
+        // auto: prefer OpenAI; on 429 fallback to Anthropic if configured
+        const openKey = await getAiProviderKey("openai");
+        const anthKey = await getAiProviderKey("anthropic");
+        if (!openKey && !anthKey) {
+          return reply.code(400).send({
+            error: "ai_not_configured",
+            message: "Configurá al menos una API key en Admin → IA (OpenAI o Anthropic).",
+          });
+        }
+        if (openKey) {
+          try {
+            providerUsed = "openai";
+            answer = await callOpenAiChat({ apiKey: openKey, messages: openAiMessages });
+          } catch (e) {
+            if (e instanceof AiUpstreamError && e.provider === "openai" && e.httpStatus === 429 && anthKey) {
+              fallbackFromOpenAi = true;
+              providerUsed = "anthropic";
+              answer = await callAnthropicClaude({
+                apiKey: anthKey,
+                system,
+                messages: anthropicMessages,
+              });
+            } else {
+              throw e;
+            }
+          }
+        } else {
+          providerUsed = "anthropic";
+          answer = await callAnthropicClaude({
+            apiKey: anthKey!,
+            system,
+            messages: anthropicMessages,
+          });
+        }
+      }
+    } catch (e) {
+      if (e instanceof AiUpstreamError) return sendUpstreamError(reply, e);
+      throw e;
     }
 
     await prisma.aiPromptLog.create({
@@ -152,7 +214,38 @@ export async function registerAiRoutes(app: FastifyInstance) {
       },
     });
 
-    return reply.send({ ok: true, provider, response: answer });
+    return reply.send({
+      ok: true,
+      provider: providerUsed,
+      response: answer,
+      ...(fallbackFromOpenAi ? { fallbackFromOpenAi: true } : {}),
+    });
+  });
+}
+
+function sendUpstreamError(reply: FastifyReply, err: AiUpstreamError) {
+  const is429 = err.httpStatus === 429;
+  if (err.provider === "openai" && is429) {
+    return reply.code(429).send({
+      error: "openai_quota_exceeded",
+      message:
+        "OpenAI indicó cuota agotada o límite de uso. Revisá facturación en platform.openai.com, o configurá Anthropic en Admin → IA para usar Claude automáticamente (modo auto).",
+    });
+  }
+  if (err.provider === "anthropic" && is429) {
+    return reply.code(429).send({
+      error: "anthropic_quota_exceeded",
+      message:
+        "Anthropic indicó cuota agotada o límite de uso. Revisá tu plan en console.anthropic.com.",
+    });
+  }
+  // Map other upstream codes to 502 so the browser no confunde 401 de proveedor con sesión JWT.
+  return reply.code(502).send({
+    error: "ai_upstream_error",
+    message:
+      err.provider === "openai"
+        ? "Error al llamar a OpenAI. Verificá la API key y el estado del servicio."
+        : "Error al llamar a Anthropic. Verificá la API key y el estado del servicio.",
   });
 }
 

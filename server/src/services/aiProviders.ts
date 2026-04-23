@@ -3,6 +3,18 @@ import { decryptSecret } from "../google/crypto.js";
 
 export type AiProvider = "openai" | "anthropic";
 
+/** Thrown when OpenAI/Anthropic return a non-2xx response (quota, invalid key, etc.). */
+export class AiUpstreamError extends Error {
+  name = "AiUpstreamError";
+  constructor(
+    public provider: AiProvider,
+    public httpStatus: number,
+    public bodySnippet: string,
+  ) {
+    super(`${provider}_error_${httpStatus}`);
+  }
+}
+
 export async function getAiProviderKey(provider: AiProvider): Promise<string | null> {
   const row = await prisma.aiProviderKey.findFirst({
     where: { provider: provider as any, revokedAt: null },
@@ -36,7 +48,7 @@ export async function callOpenAiChat(input: {
     }),
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`openai_error_${res.status}: ${text.slice(0, 200)}`);
+  if (!res.ok) throw new AiUpstreamError("openai", res.status, text.slice(0, 800));
   const json = JSON.parse(text) as any;
   return String(json?.choices?.[0]?.message?.content ?? "").trim();
 }
@@ -64,7 +76,7 @@ export async function callAnthropicClaude(input: {
     }),
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`anthropic_error_${res.status}: ${text.slice(0, 200)}`);
+  if (!res.ok) throw new AiUpstreamError("anthropic", res.status, text.slice(0, 800));
   const json = JSON.parse(text) as any;
   const parts = json?.content ?? [];
   const out = Array.isArray(parts) ? parts.map((p: any) => p?.text ?? "").join("") : "";

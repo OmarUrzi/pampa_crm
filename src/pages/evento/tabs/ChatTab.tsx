@@ -6,6 +6,7 @@ import { apiAiChat, apiCreateChatMessage } from "../../../api/chat";
 import { refreshEventoDetailIntoStore } from "../../../api/hydrateEventoDetail";
 import { useCanEdit } from "../../../auth/perms";
 import { useAuthGate } from "../../../auth/useAuthGate";
+import { useNoticeStore } from "../../../state/useNoticeStore";
 
 export function ChatTab({ eventoId }: { eventoId: string }) {
   const chat = useAppStore((s) => s.chatByEventoId[eventoId] ?? []);
@@ -13,6 +14,7 @@ export function ChatTab({ eventoId }: { eventoId: string }) {
   const send = useAppStore((s) => s.chatSend);
   const canEdit = useCanEdit();
   const gate = useAuthGate();
+  const showNotice = useNoticeStore((s) => s.show);
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
@@ -121,14 +123,19 @@ export function ChatTab({ eventoId }: { eventoId: string }) {
               if (sending) return;
               setSending(true);
               send(eventoId, q);
-              await gate.run(async () => {
-                // Persistimos user+ai como 2 msgs, y refrescamos para quedar con ids reales.
-                await apiCreateChatMessage(eventoId, { role: "user", msg: q });
-                const res = await apiAiChat(eventoId, q);
-                await apiCreateChatMessage(eventoId, { role: "ai", msg: res?.response ?? "—" });
-                await refreshEventoDetailIntoStore(eventoId);
-              });
-              setSending(false);
+              try {
+                await gate.run(async () => {
+                  await apiCreateChatMessage(eventoId, { role: "user", msg: q });
+                  const res = await apiAiChat(eventoId, q);
+                  if (res?.fallbackFromOpenAi) {
+                    showNotice("OpenAI sin cuota; respondimos con Claude.", { variant: "info" });
+                  }
+                  await apiCreateChatMessage(eventoId, { role: "ai", msg: res?.response ?? "—" });
+                  await refreshEventoDetailIntoStore(eventoId);
+                });
+              } finally {
+                setSending(false);
+              }
             }}
             disabled={!canEdit}
           >
@@ -171,42 +178,53 @@ export function ChatTab({ eventoId }: { eventoId: string }) {
             fontSize: 12,
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              if (!text.trim()) return;
-              (async () => {
-                if (sending) return;
-                setSending(true);
-                send(eventoId, text);
+            if (e.key !== "Enter") return;
+            if (!text.trim() || sending) return;
+            const msg = text.trim();
+            setText("");
+            void (async () => {
+              setSending(true);
+              send(eventoId, msg);
+              try {
                 await gate.run(async () => {
-                  await apiCreateChatMessage(eventoId, { role: "user", msg: text });
-                  const res = await apiAiChat(eventoId, text);
+                  await apiCreateChatMessage(eventoId, { role: "user", msg });
+                  const res = await apiAiChat(eventoId, msg);
+                  if (res?.fallbackFromOpenAi) {
+                    showNotice("OpenAI sin cuota; respondimos con Claude.", { variant: "info" });
+                  }
                   await apiCreateChatMessage(eventoId, { role: "ai", msg: res?.response ?? "—" });
                   await refreshEventoDetailIntoStore(eventoId);
                 });
-              })();
-              setText("");
-              setSending(false);
-            }
+              } finally {
+                setSending(false);
+              }
+            })();
           }}
           disabled={!canEdit}
         />
         <button
           type="button"
           onClick={() => {
-            if (!text.trim()) return;
-            (async () => {
-              if (sending) return;
-              setSending(true);
-              send(eventoId, text);
-              await gate.run(async () => {
-                await apiCreateChatMessage(eventoId, { role: "user", msg: text });
-                const res = await apiAiChat(eventoId, text);
-                await apiCreateChatMessage(eventoId, { role: "ai", msg: res?.response ?? "—" });
-                await refreshEventoDetailIntoStore(eventoId);
-              });
-            })();
+            if (!text.trim() || sending) return;
+            const msg = text.trim();
             setText("");
-            setSending(false);
+            void (async () => {
+              setSending(true);
+              send(eventoId, msg);
+              try {
+                await gate.run(async () => {
+                  await apiCreateChatMessage(eventoId, { role: "user", msg });
+                  const res = await apiAiChat(eventoId, msg);
+                  if (res?.fallbackFromOpenAi) {
+                    showNotice("OpenAI sin cuota; respondimos con Claude.", { variant: "info" });
+                  }
+                  await apiCreateChatMessage(eventoId, { role: "ai", msg: res?.response ?? "—" });
+                  await refreshEventoDetailIntoStore(eventoId);
+                });
+              } finally {
+                setSending(false);
+              }
+            })();
           }}
           style={{
             padding: "6px 12px",

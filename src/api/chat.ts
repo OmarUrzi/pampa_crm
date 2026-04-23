@@ -10,10 +10,23 @@ export async function apiCreateChatMessage(
   });
 }
 
-export async function apiAiChat(eventoId: string, prompt: string) {
-  return await apiFetch<{ ok: boolean; provider: string; response: string }>(`/ai/chat`, {
+export async function apiAiChat(
+  eventoId: string,
+  prompt: string,
+  opts?: { provider?: "openai" | "anthropic" | "auto" },
+) {
+  return await apiFetch<{
+    ok: boolean;
+    provider: string;
+    response: string;
+    fallbackFromOpenAi?: boolean;
+  }>(`/ai/chat`, {
     method: "POST",
-    body: JSON.stringify({ eventoId, prompt }),
+    body: JSON.stringify({
+      eventoId,
+      prompt,
+      provider: opts?.provider ?? "auto",
+    }),
     timeoutMs: 60_000,
   });
 }
