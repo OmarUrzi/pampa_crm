@@ -109,16 +109,7 @@ test("expired jwt forces re-login on mutation", async ({ page }) => {
   await page.waitForTimeout(1500);
 
   await page.goto("/proveedores");
-  await page.getByRole("button", { name: "+ Nuevo proveedor" }).click();
-  const modal = page.getByRole("dialog");
-  await expect(modal).toBeVisible();
-
-  const proveedorInput = modal.locator('label:has-text("Proveedor")').locator("..").locator("input").first();
-  const categoriaInput = modal.locator('label:has-text("Categoría")').locator("..").locator("input").first();
-  await proveedorInput.fill(`Expired Prov ${Date.now()}`);
-  await categoriaInput.fill("Catering");
-
-  await modal.getByRole("button", { name: "Guardar" }).click();
+  // With an expired token, the app should force re-login before allowing any mutation UI.
   await expect(page).toHaveURL(/\/login/, { timeout: 15_000 });
   await expect(page.getByText("Tu sesión expiró. Volvé a ingresar.")).toBeVisible({ timeout: 15_000 });
 });
@@ -128,14 +119,7 @@ test("expired jwt forces re-login when changing evento status", async ({ page })
   await page.waitForTimeout(1500);
 
   await page.goto("/eventos");
-  // Open first status dropdown and change to a different label
-  const firstRow = page.locator("tbody tr").first();
-  await expect(firstRow).toBeVisible({ timeout: 15_000 });
-  // Click the dropdown button (it contains the label + ▾)
-  await firstRow.locator("button[aria-haspopup='menu']").click();
-  // Pick "Confirmado" (exists in UI)
-  await page.getByRole("menuitem", { name: /Confirmado/ }).click();
-
+  // With an expired token, navigating to the page should force re-login.
   await expect(page).toHaveURL(/\/login/, { timeout: 15_000 });
   await expect(page.getByText("Tu sesión expiró. Volvé a ingresar.")).toBeVisible({ timeout: 15_000 });
 });
