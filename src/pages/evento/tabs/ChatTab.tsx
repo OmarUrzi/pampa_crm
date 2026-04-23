@@ -97,12 +97,14 @@ export function ChatTab({ eventoId }: { eventoId: string }) {
                         border: "0.5px solid var(--color-border-tertiary)",
                       }
                     : {
-                        background: "#FEF0EA",
-                        border: "0.5px solid rgba(234,101,54,0.2)",
+                        background: "var(--color-primary-subtle)",
+                        border: "0.5px solid var(--color-border-primary)",
                       }),
                 }}
               >
-                <p style={{ fontSize: 12, lineHeight: 1.6, margin: 0 }}>{m.m}</p>
+                <p style={{ fontSize: 12, lineHeight: 1.6, margin: 0, color: "var(--color-text-primary)" }}>
+                  {m.m}
+                </p>
               </div>
             </div>
           );
