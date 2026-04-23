@@ -1,33 +1,51 @@
 .sectionTitle {
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   color: var(--color-text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   margin-bottom: 10px;
 }
 
+/* ── Pill / badge ───────────────────────────────────────── */
 .pill {
-  padding: 3px 9px;
-  border-radius: 999px;
+  padding: 3px 8px;
+  border-radius: 5px;
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
   display: inline-block;
+  letter-spacing: 0.01em;
 }
 
+/* ── Button ─────────────────────────────────────────────── */
 .btn {
-  padding: 6px 11px;
-  border-radius: 10px;
-  border: 0.5px solid var(--color-border-secondary);
-  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-secondary);
+  background: var(--color-background-primary);
   cursor: pointer;
   font-size: 12px;
+  font-weight: 500;
   color: var(--color-text-primary);
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+  white-space: nowrap;
+  line-height: 1.4;
+  box-shadow: var(--shadow-sm);
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
   background: var(--color-background-secondary);
+  border-color: var(--color-border-primary);
+  box-shadow: var(--shadow-md);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .primary {
@@ -35,25 +53,40 @@
   background: var(--color-primary);
   color: #fff;
   font-weight: 600;
+  box-shadow: 0 1px 3px rgba(234, 101, 54, 0.35);
 }
 
-.primary:hover {
+.primary:hover:not(:disabled) {
   background: var(--color-primary-hover);
+  border-color: transparent;
+  box-shadow: 0 2px 6px rgba(234, 101, 54, 0.45);
 }
 
+/* ── Chip / filter pill ─────────────────────────────────── */
 .chip {
-  padding: 5px 11px;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  border: 0.5px solid var(--color-border-secondary);
-  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border-secondary);
+  background: var(--color-background-primary);
   color: var(--color-text-secondary);
+  transition: all 0.12s;
+  line-height: 1.4;
+  box-shadow: var(--shadow-sm);
+}
+
+.chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .on {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background: #fef0ea;
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+  background: var(--color-primary-subtle) !important;
+  font-weight: 600 !important;
 }
-

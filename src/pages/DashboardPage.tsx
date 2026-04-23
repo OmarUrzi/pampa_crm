@@ -3,18 +3,7 @@ import { Link } from "react-router-dom";
 import { useAppStore } from "../state/useAppStore";
 import { Chip, Pill, SectionTitle } from "../ui/ui";
 import type { Currency, EventoStatus } from "../types";
-
-const ST: Record<
-  EventoStatus,
-  { label: string; bg: string; fg: string }
-> = {
-  consulta: { label: "Consulta", bg: "#EDF5FF", fg: "#185FA5" },
-  cotizando: { label: "Cotizando", bg: "#FFF8EC", fg: "#854F0B" },
-  enviada: { label: "Cot. Enviada", bg: "#FEF3E2", fg: "#D97706" },
-  negociacion: { label: "En Negociación", bg: "#F1EFE8", fg: "#5F5E5A" },
-  confirmado: { label: "Confirmado", bg: "#E6F5F0", fg: "#0F6E56" },
-  perdido: { label: "Perdido", bg: "#FAECE7", fg: "#993C1D" },
-};
+import { ST_LEGACY as ST } from "../ui/statusColors";
 
 function badge(status: EventoStatus) {
   const x = ST[status];
@@ -97,20 +86,25 @@ export function DashboardPage() {
       label: "Mis eventos activos",
       value: active.length,
       sub: "en gestión",
-      bg: "#FEF0EA",
+      accent: "var(--color-primary)",
     },
     {
       label: "En negociación",
       value: pend.length,
       sub: "requieren atención",
-      bg: "#E6F5F0",
+      accent: "var(--color-warning-fg)",
     },
-    { label: "Confirmados", value: conf.length, sub: "en mi cartera", bg: "#EDF5FF" },
+    {
+      label: "Confirmados",
+      value: conf.length,
+      sub: "en mi cartera",
+      accent: "var(--color-success-fg)",
+    },
     {
       label: "Ingresos confirm.",
-      value: `${money("USD", ingresos.USD)} · ${money("ARS", ingresos.ARS)}`,
-      sub: "por moneda",
-      bg: "#FFF8EC",
+      value: `${money("USD", ingresos.USD)}`,
+      sub: money("ARS", ingresos.ARS),
+      accent: "var(--color-info-fg)",
     },
   ];
 
@@ -161,14 +155,21 @@ export function DashboardPage() {
         {mcs.map((m) => (
           <div
             key={m.label}
-            style={{ borderRadius: 12, padding: "14px 16px", background: m.bg }}
+            style={{
+              borderRadius: 10,
+              padding: "16px 18px",
+              background: "var(--color-background-primary)",
+              border: "1px solid var(--color-border-tertiary)",
+              borderLeft: `3px solid ${m.accent}`,
+              boxShadow: "var(--shadow-sm)",
+            }}
           >
             <div
               style={{
                 fontSize: 10,
                 color: "var(--color-text-secondary)",
                 textTransform: "uppercase",
-                letterSpacing: "0.07em",
+                letterSpacing: "0.08em",
                 marginBottom: 8,
                 fontWeight: 700,
               }}
@@ -177,9 +178,10 @@ export function DashboardPage() {
             </div>
             <div
               style={{
-                fontSize: 22,
+                fontSize: 24,
                 fontWeight: 700,
-                fontFamily: "var(--font-serif)",
+                color: "var(--color-text-primary)",
+                lineHeight: 1.2,
               }}
             >
               {m.value}
@@ -293,10 +295,11 @@ export function DashboardPage() {
 }
 
 const panelStyle: React.CSSProperties = {
-  border: "0.5px solid var(--color-border-tertiary)",
-  borderRadius: 12,
-  padding: 14,
+  border: "1px solid var(--color-border-tertiary)",
+  borderRadius: 10,
+  padding: 16,
   background: "var(--color-background-primary)",
+  boxShadow: "var(--shadow-sm)",
 };
 
 const thStyle: React.CSSProperties = {

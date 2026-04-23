@@ -5,15 +5,7 @@ import { Button, Chip, Pill } from "../ui/ui";
 import type { EventoStatus } from "../types";
 import { StatusDropdown } from "../ui/StatusDropdown";
 import { EventoFormModal } from "../ui/EventoFormModal";
-
-const ST: Record<EventoStatus, { label: string; bg: string; fg: string }> = {
-  consulta: { label: "Consulta", bg: "#EDF5FF", fg: "#185FA5" },
-  cotizando: { label: "Cotizando", bg: "#FFF8EC", fg: "#854F0B" },
-  enviada: { label: "Cot. Enviada", bg: "#FEF3E2", fg: "#D97706" },
-  negociacion: { label: "En Negociación", bg: "#F1EFE8", fg: "#5F5E5A" },
-  confirmado: { label: "Confirmado", bg: "#E6F5F0", fg: "#0F6E56" },
-  perdido: { label: "Perdido", bg: "#FAECE7", fg: "#993C1D" },
-};
+import { ST_LEGACY as ST } from "../ui/statusColors";
 
 function badge(status: EventoStatus) {
   const x = ST[status];

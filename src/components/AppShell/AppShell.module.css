@@ -1,34 +1,40 @@
 .frame {
-  padding: 0;
   height: 100vh;
   overflow: hidden;
 }
 
 .shell {
   display: flex;
-  border-radius: 0;
-  overflow: hidden;
-  border: none;
   height: 100%;
   width: 100%;
   background: var(--color-surface);
 }
 
 .sidebar {
-  width: 188px;
+  width: 210px;
   flex-shrink: 0;
   background: var(--color-sidebar);
-  padding: 0;
-  height: 100vh;
+  height: 100%;
   position: relative;
   overflow: hidden;
+  transition: background 0.2s;
 }
 
 .main {
   flex: 1;
-  padding: 22px 24px;
-  background: var(--color-background-primary);
+  padding: 24px 28px;
+  background: var(--color-background-secondary);
   overflow: auto;
   height: 100%;
+  transition: background 0.2s;
 }
 
+.content {
+  background: var(--color-background-primary);
+  border-radius: 14px;
+  padding: 24px 28px;
+  min-height: calc(100% - 0px);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border-tertiary);
+  transition: background 0.2s;
+}

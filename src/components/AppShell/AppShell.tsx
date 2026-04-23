@@ -16,10 +16,15 @@ export function AppShell({ children }: { children?: ReactNode }) {
         </aside>
         <main className={styles.main}>
           <NoticeBanner />
-          {isBootstrapping ? <FullPageLoader message="Cargando datos…" /> : (children ?? <Outlet />)}
+          <div className={styles.content}>
+            {isBootstrapping ? (
+              <FullPageLoader message="Cargando datos…" />
+            ) : (
+              children ?? <Outlet />
+            )}
+          </div>
         </main>
       </div>
     </div>
   );
 }
-
