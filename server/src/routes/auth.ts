@@ -30,6 +30,29 @@ async function issueRefreshToken(reply: any, userId: string) {
   reply.setCookie(REFRESH_COOKIE, raw, cookieOpts());
 }
 
+async function tryEnableGmailWatch(gmail: any, mailboxId: string, log?: { warn?: (...args: any[]) => void }) {
+  const topic = (env.GOOGLE_PUBSUB_TOPIC ?? "").trim();
+  if (!topic) return;
+  try {
+    const w = await gmail.users.watch({
+      userId: "me",
+      requestBody: { topicName: topic, labelIds: ["INBOX"] },
+    });
+    const hid = w.data.historyId ? String(w.data.historyId) : null;
+    await prisma.googleMailbox.update({
+      where: { id: mailboxId },
+      data: { lastHistoryId: hid, lastSyncAt: new Date() },
+    });
+  } catch (e) {
+    // don't block mailbox connect on watch issues
+    try {
+      log?.warn?.({ err: e }, "gmail watch failed");
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export async function registerAuthRoutes(app: FastifyInstance) {
   app.get("/auth/session", async (req) => {
     try {
@@ -163,6 +186,9 @@ export async function registerAuthRoutes(app: FastifyInstance) {
           expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
         },
       });
+
+      // Enable push notifications (Pub/Sub) if configured.
+      await tryEnableGmailWatch(gmail, mailbox.id, app.log);
 
       const fe = env.FRONTEND_URL ?? "http://localhost:5173";
       return reply.redirect(`${fe.replace(/\/$/, "")}/admin/mailboxes?connected=1`, 302);
