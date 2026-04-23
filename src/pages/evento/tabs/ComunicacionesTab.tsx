@@ -46,13 +46,26 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
 
   const [filter, setFilter] = useState<"Todos" | EventoCommsTipo | "Gmail">("Todos");
   const [gmail, setGmail] = useState<GmailComm[]>([]);
+  const [gmailLoading, setGmailLoading] = useState(false);
+
+  async function refreshGmail() {
+    setGmailLoading(true);
+    try {
+      await gate.run(async () => {
+        const res = await apiEventoGmailComms(eventoId);
+        setGmail(res?.messages ?? []);
+      });
+    } finally {
+      setGmailLoading(false);
+    }
+  }
 
   useEffect(() => {
-    void gate.run(async () => {
-      const res = await apiEventoGmailComms(eventoId);
-      setGmail(res?.messages ?? []);
-    });
-  }, [eventoId, gate]);
+    // Refresh Gmail when entering tab and when user switches to Gmail/Todos.
+    if (filter !== "Gmail" && filter !== "Todos") return;
+    void refreshGmail();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventoId, filter]);
 
   const filtered = useMemo(() => {
     if (filter === "Todos") return comms;
@@ -97,7 +110,12 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
 
       {filter === "Gmail" || filter === "Todos" ? (
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 8 }}>Gmail (auto)</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 900 }}>Gmail (auto)</div>
+            <Button type="button" onClick={() => void refreshGmail()} disabled={gmailLoading}>
+              {gmailLoading ? "Actualizando…" : "Actualizar"}
+            </Button>
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {gmail.map((m) => (
               <div

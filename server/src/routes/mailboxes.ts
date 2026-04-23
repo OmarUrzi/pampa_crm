@@ -23,7 +23,7 @@ async function gmailClientForMailbox(mailboxId: string) {
 }
 
 async function loadRelevantEmailsSet() {
-  const [cts, pcs] = await Promise.all([
+  const [cts, pcs, evs] = await Promise.all([
     prisma.contacto.findMany({
       where: { deletedAt: null, email: { not: null } },
       select: { email: true },
@@ -32,6 +32,12 @@ async function loadRelevantEmailsSet() {
     prisma.proveedorContacto.findMany({
       where: { deletedAt: null, email: { not: null } },
       select: { email: true },
+      take: 10_000,
+    }),
+    // Also consider free-form event contact references (contactoRef) as relevant.
+    prisma.evento.findMany({
+      where: { deletedAt: null, contactoRef: { not: null } },
+      select: { contactoRef: true },
       take: 10_000,
     }),
   ]);
@@ -43,6 +49,10 @@ async function loadRelevantEmailsSet() {
   for (const x of pcs) {
     const e = String(x.email ?? "").trim().toLowerCase();
     if (e) set.add(e);
+  }
+  for (const x of evs) {
+    const e = String(x.contactoRef ?? "").trim().toLowerCase();
+    if (e && e.includes("@")) set.add(e);
   }
   return set;
 }
@@ -171,16 +181,18 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
         if (stored) upserted++;
       }
 
+      // Update lastSyncAt even if getProfile fails; lastHistoryId is best-effort.
+      let hid: string | null = null;
       try {
         const prof = await c.gmail.users.getProfile({ userId: "me" });
-        const hid = prof.data.historyId ? String(prof.data.historyId) : null;
-        await prisma.googleMailbox.update({
-          where: { id: c.mailbox.id },
-          data: { lastHistoryId: hid, lastSyncAt: new Date() },
-        });
+        hid = prof.data.historyId ? String(prof.data.historyId) : null;
       } catch {
         // ignore
       }
+      await prisma.googleMailbox.update({
+        where: { id: c.mailbox.id },
+        data: { lastHistoryId: hid ?? c.mailbox.lastHistoryId ?? null, lastSyncAt: new Date() },
+      });
       try {
         await pruneOldMessages();
       } catch {
