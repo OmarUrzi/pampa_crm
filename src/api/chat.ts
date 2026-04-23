@@ -13,13 +13,13 @@ export async function apiCreateChatMessage(
 export async function apiAiChat(
   eventoId: string,
   prompt: string,
-  opts?: { provider?: "openai" | "anthropic" | "auto" },
+  opts?: { provider?: "gemini" | "anthropic" | "auto" },
 ) {
   return await apiFetch<{
     ok: boolean;
     provider: string;
     response: string;
-    fallbackFromOpenAi?: boolean;
+    fallbackFromGemini?: boolean;
   }>(`/ai/chat`, {
     method: "POST",
     body: JSON.stringify({

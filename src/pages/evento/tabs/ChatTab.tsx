@@ -127,8 +127,8 @@ export function ChatTab({ eventoId }: { eventoId: string }) {
                 await gate.run(async () => {
                   await apiCreateChatMessage(eventoId, { role: "user", msg: q });
                   const res = await apiAiChat(eventoId, q);
-                  if (res?.fallbackFromOpenAi) {
-                    showNotice("OpenAI sin cuota; respondimos con Claude.", { variant: "info" });
+                  if (res?.fallbackFromGemini) {
+                    showNotice("Gemini sin cuota o límite; respondimos con Claude.", { variant: "info" });
                   }
                   await apiCreateChatMessage(eventoId, { role: "ai", msg: res?.response ?? "—" });
                   await refreshEventoDetailIntoStore(eventoId);
@@ -189,8 +189,8 @@ export function ChatTab({ eventoId }: { eventoId: string }) {
                 await gate.run(async () => {
                   await apiCreateChatMessage(eventoId, { role: "user", msg });
                   const res = await apiAiChat(eventoId, msg);
-                  if (res?.fallbackFromOpenAi) {
-                    showNotice("OpenAI sin cuota; respondimos con Claude.", { variant: "info" });
+                  if (res?.fallbackFromGemini) {
+                    showNotice("Gemini sin cuota o límite; respondimos con Claude.", { variant: "info" });
                   }
                   await apiCreateChatMessage(eventoId, { role: "ai", msg: res?.response ?? "—" });
                   await refreshEventoDetailIntoStore(eventoId);
@@ -215,8 +215,8 @@ export function ChatTab({ eventoId }: { eventoId: string }) {
                 await gate.run(async () => {
                   await apiCreateChatMessage(eventoId, { role: "user", msg });
                   const res = await apiAiChat(eventoId, msg);
-                  if (res?.fallbackFromOpenAi) {
-                    showNotice("OpenAI sin cuota; respondimos con Claude.", { variant: "info" });
+                  if (res?.fallbackFromGemini) {
+                    showNotice("Gemini sin cuota o límite; respondimos con Claude.", { variant: "info" });
                   }
                   await apiCreateChatMessage(eventoId, { role: "ai", msg: res?.response ?? "—" });
                   await refreshEventoDetailIntoStore(eventoId);

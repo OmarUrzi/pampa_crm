@@ -45,6 +45,7 @@ enum AppUserRole {
 enum AiProvider {
   openai
   anthropic
+  gemini
 }
 
 model AppUser {

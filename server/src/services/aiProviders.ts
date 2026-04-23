@@ -1,9 +1,10 @@
 import { prisma } from "../prisma.js";
 import { decryptSecret } from "../google/crypto.js";
 
-export type AiProvider = "openai" | "anthropic";
+/** Keys stored in DB / called upstream */
+export type AiProvider = "openai" | "anthropic" | "gemini";
 
-/** Thrown when OpenAI/Anthropic return a non-2xx response (quota, invalid key, etc.). */
+/** Thrown when an upstream LLM API returns non-2xx */
 export class AiUpstreamError extends Error {
   name = "AiUpstreamError";
   constructor(
@@ -29,28 +30,39 @@ export async function getAiProviderKey(provider: AiProvider): Promise<string | n
   }
 }
 
-export async function callOpenAiChat(input: {
+/** Google AI Studio / Gemini API (API key en query). Default model configurable via GEMINI_MODEL. */
+export async function callGeminiGenerateContent(input: {
   apiKey: string;
-  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  system: string;
+  userText: string;
   model?: string;
 }): Promise<string> {
-  const model = input.model ?? "gpt-4o-mini";
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const model = input.model ?? process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(input.apiKey)}`;
+  const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${input.apiKey}`,
-    },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      model,
-      messages: input.messages,
-      temperature: 0.2,
+      systemInstruction: { parts: [{ text: input.system }] },
+      contents: [{ role: "user", parts: [{ text: input.userText }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
     }),
   });
   const text = await res.text();
-  if (!res.ok) throw new AiUpstreamError("openai", res.status, text.slice(0, 800));
-  const json = JSON.parse(text) as any;
-  return String(json?.choices?.[0]?.message?.content ?? "").trim();
+  if (!res.ok) throw new AiUpstreamError("gemini", res.status, text.slice(0, 800));
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new AiUpstreamError("gemini", 502, text.slice(0, 200));
+  }
+  const parts = json?.candidates?.[0]?.content?.parts;
+  const out = Array.isArray(parts) ? parts.map((p: any) => p?.text ?? "").join("") : "";
+  const trimmed = String(out).trim();
+  if (!trimmed && json?.promptFeedback?.blockReason) {
+    throw new AiUpstreamError("gemini", 400, String(json.promptFeedback.blockReason));
+  }
+  return trimmed;
 }
 
 export async function callAnthropicClaude(input: {
@@ -82,4 +94,3 @@ export async function callAnthropicClaude(input: {
   const out = Array.isArray(parts) ? parts.map((p: any) => p?.text ?? "").join("") : "";
   return String(out).trim();
 }
-

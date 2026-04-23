@@ -20,7 +20,7 @@ export async function apiAdminPatchUserRole(id: string, role: AdminUser["role"])
   });
 }
 
-export type AiProvider = "openai" | "anthropic";
+export type AiProvider = "openai" | "anthropic" | "gemini";
 export type AiProviderRow = {
   provider: AiProvider;
   createdAt: string;

@@ -4,12 +4,11 @@ import { prisma } from "../prisma.js";
 import { jwtVerifyGuard } from "../auth/jwtGuards.js";
 import {
   getAiProviderKey,
-  callOpenAiChat,
+  callGeminiGenerateContent,
   callAnthropicClaude,
   AiUpstreamError,
 } from "../services/aiProviders.js";
 
-// Placeholder: la fase real llamará a un modelo (Claude/GPT) con herramientas/datos.
 export async function registerAiRoutes(app: FastifyInstance) {
   app.post("/ai/ask", async (req) => {
     const schema = z.object({
@@ -34,8 +33,8 @@ export async function registerAiRoutes(app: FastifyInstance) {
     const schema = z.object({
       eventoId: z.string().min(1),
       prompt: z.string().min(1),
-      /** `auto` = OpenAI primero (más barato); si cuota 429 y hay key de Anthropic, usa Claude. */
-      provider: z.enum(["openai", "anthropic", "auto"]).optional(),
+      /** `auto` = Gemini primero; si cuota/límite y hay Claude, usa Anthropic. */
+      provider: z.enum(["gemini", "anthropic", "auto"]).optional(),
     });
     const body = schema.parse(req.body);
 
@@ -52,7 +51,6 @@ export async function registerAiRoutes(app: FastifyInstance) {
     });
     if (!ev || ev.deletedAt) return reply.code(404).send({ error: "not_found" });
 
-    // Gmail messages relevant to this event (already filtered server-side).
     let gmailMsgs: any[] = [];
     try {
       const empresaContactos = await prisma.contacto.findMany({
@@ -129,15 +127,11 @@ export async function registerAiRoutes(app: FastifyInstance) {
     ].join(" ");
 
     const userContent = `Contexto JSON:\n${JSON.stringify(context)}\n\nPregunta:\n${body.prompt}`;
-    const openAiMessages = [
-      { role: "system" as const, content: system },
-      { role: "user" as const, content: userContent },
-    ];
     const anthropicMessages = [{ role: "user" as const, content: userContent }];
 
     const mode = body.provider ?? "auto";
-    let providerUsed: "openai" | "anthropic" = "openai";
-    let fallbackFromOpenAi = false;
+    let providerUsed: "gemini" | "anthropic" = "gemini";
+    let fallbackFromGemini = false;
     let answer = "";
 
     try {
@@ -146,7 +140,7 @@ export async function registerAiRoutes(app: FastifyInstance) {
         if (!apiKey) {
           return reply.code(400).send({
             error: "anthropic_not_configured",
-            message: "No hay API key de Anthropic. Configurala en Admin → IA o usá OpenAI.",
+            message: "No hay API key de Anthropic. Configurala en Admin → IA o usá Gemini.",
           });
         }
         providerUsed = "anthropic";
@@ -155,33 +149,41 @@ export async function registerAiRoutes(app: FastifyInstance) {
           system,
           messages: anthropicMessages,
         });
-      } else if (mode === "openai") {
-        const apiKey = await getAiProviderKey("openai");
+      } else if (mode === "gemini") {
+        const apiKey = await getAiProviderKey("gemini");
         if (!apiKey) {
           return reply.code(400).send({
-            error: "openai_not_configured",
-            message: "No hay API key de OpenAI. Configurala en Admin → IA o elegí Claude.",
+            error: "gemini_not_configured",
+            message:
+              "No hay API key de Google Gemini. Creá una en Google AI Studio y guardala en Admin → IA.",
           });
         }
-        providerUsed = "openai";
-        answer = await callOpenAiChat({ apiKey, messages: openAiMessages });
+        providerUsed = "gemini";
+        answer = await callGeminiGenerateContent({
+          apiKey,
+          system,
+          userText: userContent,
+        });
       } else {
-        // auto: prefer OpenAI; on 429 fallback to Anthropic if configured
-        const openKey = await getAiProviderKey("openai");
+        const geminiKey = await getAiProviderKey("gemini");
         const anthKey = await getAiProviderKey("anthropic");
-        if (!openKey && !anthKey) {
+        if (!geminiKey && !anthKey) {
           return reply.code(400).send({
             error: "ai_not_configured",
-            message: "Configurá al menos una API key en Admin → IA (OpenAI o Anthropic).",
+            message: "Configurá al menos una API key en Admin → IA (Gemini o Anthropic).",
           });
         }
-        if (openKey) {
+        if (geminiKey) {
           try {
-            providerUsed = "openai";
-            answer = await callOpenAiChat({ apiKey: openKey, messages: openAiMessages });
+            providerUsed = "gemini";
+            answer = await callGeminiGenerateContent({
+              apiKey: geminiKey,
+              system,
+              userText: userContent,
+            });
           } catch (e) {
-            if (e instanceof AiUpstreamError && e.provider === "openai" && e.httpStatus === 429 && anthKey) {
-              fallbackFromOpenAi = true;
+            if (e instanceof AiUpstreamError && e.provider === "gemini" && e.httpStatus === 429 && anthKey) {
+              fallbackFromGemini = true;
               providerUsed = "anthropic";
               answer = await callAnthropicClaude({
                 apiKey: anthKey,
@@ -218,18 +220,18 @@ export async function registerAiRoutes(app: FastifyInstance) {
       ok: true,
       provider: providerUsed,
       response: answer,
-      ...(fallbackFromOpenAi ? { fallbackFromOpenAi: true } : {}),
+      ...(fallbackFromGemini ? { fallbackFromGemini: true } : {}),
     });
   });
 }
 
 function sendUpstreamError(reply: FastifyReply, err: AiUpstreamError) {
   const is429 = err.httpStatus === 429;
-  if (err.provider === "openai" && is429) {
+  if (err.provider === "gemini" && is429) {
     return reply.code(429).send({
-      error: "openai_quota_exceeded",
+      error: "gemini_quota_exceeded",
       message:
-        "OpenAI indicó cuota agotada o límite de uso. Revisá facturación en platform.openai.com, o configurá Anthropic en Admin → IA para usar Claude automáticamente (modo auto).",
+        "Gemini indicó cuota o límite de uso. Revisá límites en Google AI Studio o configurá Anthropic en Admin → IA (modo auto).",
     });
   }
   if (err.provider === "anthropic" && is429) {
@@ -239,12 +241,11 @@ function sendUpstreamError(reply: FastifyReply, err: AiUpstreamError) {
         "Anthropic indicó cuota agotada o límite de uso. Revisá tu plan en console.anthropic.com.",
     });
   }
-  // Map other upstream codes to 502 so the browser no confunde 401 de proveedor con sesión JWT.
   return reply.code(502).send({
     error: "ai_upstream_error",
     message:
-      err.provider === "openai"
-        ? "Error al llamar a OpenAI. Verificá la API key y el estado del servicio."
+      err.provider === "gemini"
+        ? "Error al llamar a Gemini. Verificá la API key en Google AI Studio y el nombre del modelo (GEMINI_MODEL)."
         : "Error al llamar a Anthropic. Verificá la API key y el estado del servicio.",
   });
 }
@@ -256,4 +257,3 @@ function mockAi(prompt: string) {
   if (/pago|saldo|seña/.test(ql)) return "Pendiente: saldo cliente + pago alojamiento (mock).";
   return "Puedo ayudarte con margen, proveedores y pagos (mock).";
 }
-

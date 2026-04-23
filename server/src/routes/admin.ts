@@ -62,7 +62,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     { preHandler: [jwtVerifyGuard, requireRole(["admin"])] },
     async (req, reply) => {
       const provider = String((req.params as any)?.provider ?? "").toLowerCase();
-      if (provider !== "openai" && provider !== "anthropic") {
+      if (provider !== "openai" && provider !== "anthropic" && provider !== "gemini") {
         return reply.code(400).send({ error: "invalid_provider" });
       }
       const schema = z.object({ apiKey: z.string().min(10) });
@@ -71,7 +71,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
       // Una sola fila por `provider` (@unique): rotar clave = actualizar cifrado, no crear otra fila.
       const row = await prisma.aiProviderKey.upsert({
-        where: { provider: provider as "openai" | "anthropic" },
+        where: { provider: provider as "openai" | "anthropic" | "gemini" },
         create: { provider: provider as any, apiKeyEnc: enc },
         update: { apiKeyEnc: enc, revokedAt: null },
         select: { provider: true, createdAt: true, updatedAt: true, revokedAt: true },

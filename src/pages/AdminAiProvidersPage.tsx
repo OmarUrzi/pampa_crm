@@ -17,7 +17,7 @@ export function AdminAiProvidersPage() {
 
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<Row[]>([]);
-  const [openaiKey, setOpenaiKey] = useState("");
+  const [geminiKey, setGeminiKey] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
   const [saving, setSaving] = useState<Record<string, boolean>>({});
 
@@ -56,7 +56,7 @@ export function AdminAiProvidersPage() {
     );
   }
 
-  const openai = byProvider.get("openai");
+  const gemini = byProvider.get("gemini");
   const anthropic = byProvider.get("anthropic");
 
   return (
@@ -65,7 +65,9 @@ export function AdminAiProvidersPage() {
         <div>
           <h1 style={{ fontFamily: "var(--font-serif)", fontSize: 20, margin: 0, fontWeight: 600 }}>AI · Providers</h1>
           <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>
-            {loading ? "cargando…" : "Configurá las keys por empresa (global) para habilitar AI en eventos y generación de slides."}
+            {loading
+              ? "cargando…"
+              : "Gemini (Google AI Studio) para el chat del evento; Claude para Slides cuando lo implementemos."}
           </div>
         </div>
       </div>
@@ -74,21 +76,26 @@ export function AdminAiProvidersPage() {
         <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, padding: 14 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div>
-              <div style={{ fontWeight: 900 }}>OpenAI (ChatGPT)</div>
+              <div style={{ fontWeight: 900 }}>Google Gemini</div>
               <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>
-                Usado por defecto para el chat AI (más barato).
+                API key de{" "}
+                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+                  Google AI Studio
+                </a>
+                . Usada por defecto para el chat AI del evento (tier gratuito con límites).
               </div>
             </div>
             <Pill style={{ background: "var(--color-background-secondary)", color: "var(--color-text-secondary)" }}>
-              {openai?.hasKey ? "conectado" : "sin key"}
+              {gemini?.hasKey ? "conectado" : "sin key"}
             </Pill>
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
             <input
-              value={openaiKey}
-              onChange={(e) => setOpenaiKey(e.target.value)}
-              placeholder="sk-..."
+              value={geminiKey}
+              onChange={(e) => setGeminiKey(e.target.value)}
+              placeholder="AIza…"
+              autoComplete="off"
               style={{
                 width: 360,
                 border: "0.5px solid var(--color-border-secondary)",
@@ -102,26 +109,26 @@ export function AdminAiProvidersPage() {
             <Button
               variant="primary"
               type="button"
-              disabled={!openaiKey.trim() || !!saving.openai}
+              disabled={!geminiKey.trim() || !!saving.gemini}
               onClick={() => {
                 void run(async () => {
-                  setSaving((s) => ({ ...s, openai: true }));
+                  setSaving((s) => ({ ...s, gemini: true }));
                   try {
-                    await apiAdminUpsertAiProvider("openai", openaiKey.trim());
-                    setOpenaiKey("");
-                    info("OpenAI conectado.");
+                    await apiAdminUpsertAiProvider("gemini", geminiKey.trim());
+                    setGeminiKey("");
+                    info("Gemini conectado.");
                     await refresh();
                   } finally {
-                    setSaving((s) => ({ ...s, openai: false }));
+                    setSaving((s) => ({ ...s, gemini: false }));
                   }
                 });
               }}
             >
-              {saving.openai ? "Guardando…" : "Guardar key"}
+              {saving.gemini ? "Guardando…" : "Guardar key"}
             </Button>
-            {openai?.updatedAt ? (
+            {gemini?.updatedAt ? (
               <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>
-                actualizado: {new Date(openai.updatedAt).toLocaleString()}
+                actualizado: {new Date(gemini.updatedAt).toLocaleString()}
               </span>
             ) : null}
           </div>
@@ -132,7 +139,7 @@ export function AdminAiProvidersPage() {
             <div>
               <div style={{ fontWeight: 900 }}>Anthropic (Claude)</div>
               <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 4 }}>
-                Usado siempre para Slides (mejor calidad).
+                Opcional: respaldo si Gemini falla por cuota (modo auto), y para Slides cuando estén listos.
               </div>
             </div>
             <Pill style={{ background: "var(--color-background-secondary)", color: "var(--color-text-secondary)" }}>
