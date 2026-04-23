@@ -22,7 +22,55 @@ async function gmailClientForMailbox(mailboxId: string) {
   return { gmail, mailbox: mb };
 }
 
-async function ingestMessage(gmail: any, mailboxId: string, gmailId: string) {
+async function loadRelevantEmailsSet() {
+  const [cts, pcs] = await Promise.all([
+    prisma.contacto.findMany({
+      where: { deletedAt: null, email: { not: null } },
+      select: { email: true },
+      take: 10_000,
+    }),
+    prisma.proveedorContacto.findMany({
+      where: { deletedAt: null, email: { not: null } },
+      select: { email: true },
+      take: 10_000,
+    }),
+  ]);
+  const set = new Set<string>();
+  for (const x of cts) {
+    const e = String(x.email ?? "").trim().toLowerCase();
+    if (e) set.add(e);
+  }
+  for (const x of pcs) {
+    const e = String(x.email ?? "").trim().toLowerCase();
+    if (e) set.add(e);
+  }
+  return set;
+}
+
+function shouldStoreMessage(relevant: Set<string>, fromEmail: string | null, toEmails: string[]) {
+  // If we have no CRM emails at all, store nothing to avoid DB spam.
+  if (!relevant.size) return false;
+  const from = (fromEmail ?? "").trim().toLowerCase();
+  if (from && relevant.has(from)) return true;
+  for (const t of toEmails) {
+    const e = (t ?? "").trim().toLowerCase();
+    if (e && relevant.has(e)) return true;
+  }
+  return false;
+}
+
+async function pruneOldMessages() {
+  const days = Number(env.GMAIL_RETENTION_DAYS ?? 10);
+  const keepDays = Number.isFinite(days) && days > 0 ? days : 10;
+  const cutoff = new Date(Date.now() - keepDays * 24 * 60 * 60 * 1000);
+  await prisma.gmailMessage.deleteMany({
+    where: {
+      OR: [{ internalAt: { lt: cutoff } }, { internalAt: null, createdAt: { lt: cutoff } }],
+    },
+  });
+}
+
+async function ingestMessage(gmail: any, mailboxId: string, gmailId: string, relevant: Set<string>) {
   const full = await gmail.users.messages.get({
     userId: "me",
     id: gmailId,
@@ -41,6 +89,8 @@ async function ingestMessage(gmail: any, mailboxId: string, gmailId: string) {
     ...parseAddressList(headers.get("to") ?? null),
     ...parseAddressList(headers.get("cc") ?? null),
   ];
+
+  if (!shouldStoreMessage(relevant, fromEmail, to)) return false;
 
   await prisma.gmailMessage.upsert({
     where: { mailboxId_gmailId: { mailboxId, gmailId } },
@@ -63,6 +113,7 @@ async function ingestMessage(gmail: any, mailboxId: string, gmailId: string) {
       internalAt: full.data.internalDate ? new Date(Number(full.data.internalDate)) : null,
     },
   });
+  return true;
 }
 
 function decodePubsubMessage(req: any): { emailAddress?: string; historyId?: string } | null {
@@ -113,10 +164,11 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
       const list = await c.gmail.users.messages.list({ userId: "me", maxResults: 25, q: "newer_than:30d" });
       const ids = (list.data.messages ?? []).map((m: any) => m.id).filter(Boolean) as string[];
 
+      const relevant = await loadRelevantEmailsSet();
       let upserted = 0;
       for (const gmailId of ids) {
-        await ingestMessage(c.gmail, c.mailbox.id, gmailId);
-        upserted++;
+        const stored = await ingestMessage(c.gmail, c.mailbox.id, gmailId, relevant);
+        if (stored) upserted++;
       }
 
       try {
@@ -129,7 +181,12 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
       } catch {
         // ignore
       }
-      return { ok: true, upserted };
+      try {
+        await pruneOldMessages();
+      } catch {
+        // ignore
+      }
+      return { ok: true, upserted, scanned: ids.length };
     },
   );
 
@@ -147,6 +204,7 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
     if (!startHistoryId) return reply.send({ ok: true });
 
     try {
+      const relevant = await loadRelevantEmailsSet();
       const h = await c.gmail.users.history.list({
         userId: "me",
         startHistoryId,
@@ -161,7 +219,7 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
         }
       }
       for (const id of Array.from(added)) {
-        await ingestMessage(c.gmail, mailbox.id, id);
+        await ingestMessage(c.gmail, mailbox.id, id, relevant);
       }
       const nextHistoryId =
         (h.data.historyId ? String(h.data.historyId) : null) ?? (msg?.historyId ?? null);
@@ -173,6 +231,11 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
       // ignore (we don't want Pub/Sub retry storms)
     }
 
+    try {
+      await pruneOldMessages();
+    } catch {
+      // ignore
+    }
     return reply.send({ ok: true });
   });
 

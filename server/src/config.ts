@@ -10,6 +10,7 @@ const envSchema = z.object({
   GOOGLE_CALLBACK_URL: z.string().optional(),
   GOOGLE_GMAIL_CALLBACK_URL: z.string().optional(),
   GOOGLE_PUBSUB_TOPIC: z.string().optional(),
+  GMAIL_RETENTION_DAYS: z.coerce.number().optional(),
   FRONTEND_URL: z.string().optional(),
   FRONTEND_URLS: z.string().optional(),
   ALLOWED_EMAILS: z.string().optional(),
