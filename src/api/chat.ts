@@ -10,3 +10,11 @@ export async function apiCreateChatMessage(
   });
 }
 
+export async function apiAiChat(eventoId: string, prompt: string) {
+  return await apiFetch<{ ok: boolean; provider: string; response: string }>(`/ai/chat`, {
+    method: "POST",
+    body: JSON.stringify({ eventoId, prompt }),
+    timeoutMs: 60_000,
+  });
+}
+

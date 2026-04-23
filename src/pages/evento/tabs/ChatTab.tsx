@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Chip } from "../../../ui/ui";
 import { useAppStore } from "../../../state/useAppStore";
 import { apiFetch } from "../../../api/client";
-import { apiCreateChatMessage } from "../../../api/chat";
+import { apiAiChat, apiCreateChatMessage } from "../../../api/chat";
 import { refreshEventoDetailIntoStore } from "../../../api/hydrateEventoDetail";
 import { useCanEdit } from "../../../auth/perms";
 import { useAuthGate } from "../../../auth/useAuthGate";
@@ -15,6 +15,7 @@ export function ChatTab({ eventoId }: { eventoId: string }) {
   const gate = useAuthGate();
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const quick = useMemo(
     () => [
@@ -117,16 +118,17 @@ export function ChatTab({ eventoId }: { eventoId: string }) {
             key={q}
             type="button"
             onClick={async () => {
+              if (sending) return;
+              setSending(true);
               send(eventoId, q);
               await gate.run(async () => {
                 // Persistimos user+ai como 2 msgs, y refrescamos para quedar con ids reales.
                 await apiCreateChatMessage(eventoId, { role: "user", msg: q });
-                await apiCreateChatMessage(eventoId, {
-                  role: "ai",
-                  msg: "OK — lo reviso y te respondo con un resumen.",
-                });
+                const res = await apiAiChat(eventoId, q);
+                await apiCreateChatMessage(eventoId, { role: "ai", msg: res?.response ?? "—" });
                 await refreshEventoDetailIntoStore(eventoId);
               });
+              setSending(false);
             }}
             disabled={!canEdit}
           >
@@ -172,17 +174,18 @@ export function ChatTab({ eventoId }: { eventoId: string }) {
             if (e.key === "Enter") {
               if (!text.trim()) return;
               (async () => {
+                if (sending) return;
+                setSending(true);
                 send(eventoId, text);
                 await gate.run(async () => {
                   await apiCreateChatMessage(eventoId, { role: "user", msg: text });
-                  await apiCreateChatMessage(eventoId, {
-                    role: "ai",
-                    msg: "OK — lo reviso y te respondo con un resumen.",
-                  });
+                  const res = await apiAiChat(eventoId, text);
+                  await apiCreateChatMessage(eventoId, { role: "ai", msg: res?.response ?? "—" });
                   await refreshEventoDetailIntoStore(eventoId);
                 });
               })();
               setText("");
+              setSending(false);
             }
           }}
           disabled={!canEdit}
@@ -192,17 +195,18 @@ export function ChatTab({ eventoId }: { eventoId: string }) {
           onClick={() => {
             if (!text.trim()) return;
             (async () => {
+              if (sending) return;
+              setSending(true);
               send(eventoId, text);
               await gate.run(async () => {
                 await apiCreateChatMessage(eventoId, { role: "user", msg: text });
-                await apiCreateChatMessage(eventoId, {
-                  role: "ai",
-                  msg: "OK — lo reviso y te respondo con un resumen.",
-                });
+                const res = await apiAiChat(eventoId, text);
+                await apiCreateChatMessage(eventoId, { role: "ai", msg: res?.response ?? "—" });
                 await refreshEventoDetailIntoStore(eventoId);
               });
             })();
             setText("");
+            setSending(false);
           }}
           style={{
             padding: "6px 12px",
@@ -210,14 +214,14 @@ export function ChatTab({ eventoId }: { eventoId: string }) {
             border: "none",
             background: "var(--color-primary)",
             color: "#fff",
-            cursor: canEdit ? "pointer" : "not-allowed",
-            opacity: canEdit ? 1 : 0.6,
+            cursor: canEdit && !sending ? "pointer" : "not-allowed",
+            opacity: canEdit && !sending ? 1 : 0.6,
             fontSize: 12,
             fontWeight: 800,
           }}
-          disabled={!canEdit}
+          disabled={!canEdit || sending}
         >
-          Enviar
+          {sending ? "Enviando…" : "Enviar"}
         </button>
       </div>
     </div>

@@ -37,7 +37,8 @@ async function tryEnableGmailWatch(gmail: any, mailboxId: string, log?: { warn?:
   try {
     const w = await gmail.users.watch({
       userId: "me",
-      requestBody: { topicName: topic, labelIds: ["INBOX"] },
+      // Include SENT so outbound messages are captured too.
+      requestBody: { topicName: topic, labelIds: ["INBOX", "SENT"] },
     });
     const hid = w.data.historyId ? String(w.data.historyId) : null;
     await prisma.googleMailbox.update({
