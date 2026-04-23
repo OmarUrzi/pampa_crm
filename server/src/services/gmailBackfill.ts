@@ -137,7 +137,8 @@ async function backfillMailboxForEmail(
   let pageToken: string | undefined = undefined;
 
   while (scanned < maxScanned && stored < maxStored) {
-    const list = await c.gmail.users.messages.list({
+    // googleapis types are permissive; keep an explicit type to satisfy `strict` TS (TS7022).
+    const list: any = await c.gmail.users.messages.list({
       userId: "me",
       maxResults: Math.min(100, maxScanned - scanned),
       q,
