@@ -86,6 +86,7 @@ export function ProveedorFormModal({
   async function save() {
     if (!canEdit) return void gate.ensureAuthed();
     if (error) return;
+    if (saving) return;
     const contactos: ProveedorContacto[] = f.contactos
       .map((c) => ({
         id: c.id,
@@ -102,6 +103,31 @@ export function ProveedorFormModal({
     };
 
     setSaving(true);
+
+    // Optimistic UX: update UI immediately, then reconcile with API.
+    const tmpId = mode === "create" ? `tmp-prov-${Date.now()}` : (initial?.id ?? "");
+    const optimistic: Proveedor = {
+      id: tmpId,
+      nombre: payload.nombre,
+      categoria: payload.categoria,
+      contactos: payload.contactos.map((c) => ({
+        id: c.id.startsWith("tmp-") ? `tmp-pc-${Date.now()}-${Math.random().toString(16).slice(2)}` : c.id,
+        nombre: c.nombre,
+        email: c.email,
+        telefono: c.telefono,
+      })),
+    };
+
+    if (mode === "create") {
+      setProveedores([optimistic, ...proveedores]);
+      onSaved(tmpId);
+      onClose();
+    } else if (initial) {
+      setProveedores(proveedores.map((x) => (x.id === optimistic.id ? optimistic : x)));
+      onSaved(optimistic.id);
+      onClose();
+    }
+
     try {
       const res = await gate.run(async () => {
         if (mode === "create") {
@@ -128,15 +154,19 @@ export function ProveedorFormModal({
         });
         return { kind: "edit" as const, proveedor: updated };
       });
-      if (!res) return;
+
+      if (!res) {
+        // request failed; revert optimistic create (edit keeps optimistic values)
+        if (mode === "create") setProveedores(useAppStore.getState().proveedores.filter((x) => x.id !== tmpId));
+        return;
+      }
+
       const p = res.proveedor;
-      if (res.kind === "create") setProveedores([p, ...proveedores]);
-      else setProveedores(proveedores.map((x) => (x.id === p.id ? p : x)));
-      onSaved(p.id);
-      gate.info(res.kind === "create" ? "Proveedor creado." : "Proveedor actualizado.");
-      onClose();
-    } catch (e) {
-      throw e;
+      if (res.kind === "create") {
+        setProveedores(useAppStore.getState().proveedores.map((x) => (x.id === tmpId ? p : x)));
+      } else {
+        setProveedores(useAppStore.getState().proveedores.map((x) => (x.id === p.id ? p : x)));
+      }
     } finally {
       setSaving(false);
     }

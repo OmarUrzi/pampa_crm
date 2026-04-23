@@ -11,6 +11,8 @@ import { useAuthGate } from "../../../auth/useAuthGate";
 export function ProveedoresTab({ eventoId }: { eventoId: string }) {
   const pedidos = useAppStore((s) => s.proveedoresPedidosByEventoId[eventoId] ?? []);
   const proveedores = useAppStore((s) => s.proveedores);
+  const addPedido = useAppStore((s) => s.addProveedorPedidoToEvento);
+  const updatePedido = useAppStore((s) => s.updateProveedorPedido);
   const canEdit = useCanEdit();
   const gate = useAuthGate();
 
@@ -83,7 +85,11 @@ export function ProveedoresTab({ eventoId }: { eventoId: string }) {
                   (async () => {
                     const p = proveedores.find((x) => x.id === selProvId);
                     if (!p) return;
-                    await gate.run(async () => {
+                    // optimistic
+                    addPedido(eventoId, p.id);
+                    setSelProvId("");
+                    setShowAdd(false);
+                    void gate.run(async () => {
                       await apiCreateProveedorPedido(eventoId, {
                         proveedorId: p.id,
                         proveedorTxt: p.nombre,
@@ -92,8 +98,6 @@ export function ProveedoresTab({ eventoId }: { eventoId: string }) {
                       });
                       await refreshEventoDetailIntoStore(eventoId);
                     });
-                    setSelProvId("");
-                    setShowAdd(false);
                   })();
                 }}
                 disabled={!selProvId}
@@ -146,6 +150,8 @@ export function ProveedoresTab({ eventoId }: { eventoId: string }) {
                         const next = v || null;
                         const prev = (p.montoLabel ?? "").trim() || null;
                         if (next === prev) return;
+                        // optimistic
+                        updatePedido(eventoId, p.id, { montoLabel: next });
                         void gate.run(async () => {
                           await apiPatchProveedorPedido(eventoId, p.id, { montoLabel: next });
                           await refreshEventoDetailIntoStore(eventoId);
@@ -181,14 +187,14 @@ export function ProveedoresTab({ eventoId }: { eventoId: string }) {
                         value={""}
                         onChange={(e) => {
                           const n = Number(e.target.value);
-                          (async () => {
-                            await gate.run(async () => {
-                              await apiPatchProveedorPedido(eventoId, p.id, {
-                                rating: Number.isFinite(n) ? n : null,
-                              });
-                              await refreshEventoDetailIntoStore(eventoId);
+                          // optimistic
+                          updatePedido(eventoId, p.id, { rating: Number.isFinite(n) ? n : null });
+                          void gate.run(async () => {
+                            await apiPatchProveedorPedido(eventoId, p.id, {
+                              rating: Number.isFinite(n) ? n : null,
                             });
-                          })();
+                            await refreshEventoDetailIntoStore(eventoId);
+                          });
                         }}
                         disabled={!canEdit}
                         style={{
@@ -234,8 +240,17 @@ export function ProveedoresTab({ eventoId }: { eventoId: string }) {
                     <Button
                       type="button"
                       style={{ fontSize: 11 }}
-                      onClick={async () => {
-                        await gate.run(async () => {
+                      onClick={() => {
+                        if (!canEdit) return void gate.ensureAuthed();
+                        // optimistic
+                        updatePedido(eventoId, p.id, {
+                          pedidoLabel: "Hoy",
+                          pedidoAt: Date.now(),
+                          respondioLabel: null,
+                          respondioAt: undefined,
+                          rating: undefined,
+                        });
+                        void gate.run(async () => {
                           await apiPatchProveedorPedido(eventoId, p.id, {
                             pedidoLabel: "Hoy",
                             pedidoAt: new Date().toISOString(),
@@ -253,8 +268,11 @@ export function ProveedoresTab({ eventoId }: { eventoId: string }) {
                     <Button
                       type="button"
                       style={{ fontSize: 11, marginLeft: 8 }}
-                      onClick={async () => {
-                        await gate.run(async () => {
+                      onClick={() => {
+                        if (!canEdit) return void gate.ensureAuthed();
+                        // optimistic
+                        updatePedido(eventoId, p.id, { respondioLabel: "Hoy", respondioAt: Date.now() });
+                        void gate.run(async () => {
                           await apiPatchProveedorPedido(eventoId, p.id, {
                             respondioLabel: "Hoy",
                             respondioAt: new Date().toISOString(),

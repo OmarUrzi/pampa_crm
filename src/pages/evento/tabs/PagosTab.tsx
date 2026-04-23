@@ -14,6 +14,7 @@ function money(cur: Currency, amount: number) {
 export function PagosTab({ eventoId }: { eventoId: string }) {
   const ev = useAppStore((s) => s.eventos.find((e) => e.id === eventoId));
   const pagos = useAppStore((s) => s.pagosByEventoId[eventoId] ?? []);
+  const markPago = useAppStore((s) => s.markPago);
   const canEdit = useCanEdit();
   const gate = useAuthGate();
 
@@ -114,12 +115,15 @@ export function PagosTab({ eventoId }: { eventoId: string }) {
                       <Button
                         type="button"
                         style={{ fontSize: 11, marginLeft: 8, padding: "4px 8px", borderRadius: 8 }}
-                        onClick={async () => {
-                          await gate.run(async () => {
+                        onClick={() => {
+                          if (!canEdit) return void gate.ensureAuthed();
+                          // optimistic UI
+                          markPago(eventoId, p.id, true);
+                          void gate.run(async () => {
                             await apiMarkPagoOk(eventoId, p.id, true);
+                            // best-effort re-sync to avoid drift
                             await refreshEventoDetailIntoStore(eventoId);
                           });
-                          gate.info("Pago marcado como pagado.");
                         }}
                         disabled={!canEdit}
                       >

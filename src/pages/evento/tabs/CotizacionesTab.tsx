@@ -196,13 +196,16 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
             variant="primary"
             type="button"
             onClick={() => {
-              (async () => {
-                await gate.run(async () => {
-                  await apiCreateCotizacionVersion(eventoId);
-                  const v = await apiFetchEventoCotizaciones(eventoId);
-                  setCotizacionesForEvento(eventoId, v);
-                });
-              })();
+              if (!canEdit) return void gate.ensureAuthed();
+              // optimistic: add local version immediately
+              addVersion(eventoId);
+              const nextActive = (useAppStore.getState().cotizacionesByEventoId[eventoId] ?? []).slice(-1)[0]?.id ?? null;
+              if (nextActive) setActiveVersionId(nextActive);
+              void gate.run(async () => {
+                await apiCreateCotizacionVersion(eventoId);
+                const v = await apiFetchEventoCotizaciones(eventoId);
+                setCotizacionesForEvento(eventoId, v);
+              });
             }}
             disabled={!canEdit}
           >
@@ -258,21 +261,25 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
               type="button"
               onClick={() => {
                 if (!active) return;
-                (async () => {
-                  const ok = await gate.run(async () => {
-                    await apiAddCotizacionItem(eventoId, active.id, {
-                      servicio: "Nuevo ítem",
-                      proveedor: "",
-                      pax: ev.pax || 0,
-                      unitCur: ev.cur,
-                      unit: 0,
-                    });
-                    const v = await apiFetchEventoCotizaciones(eventoId);
-                    setCotizacionesForEvento(eventoId, v);
-                    return true;
+                if (!canEdit) return void gate.ensureAuthed();
+                addItem(eventoId, active.id, {
+                  servicio: "Nuevo ítem",
+                  proveedor: "",
+                  pax: ev.pax || 0,
+                  unitCur: ev.cur,
+                  unit: 0,
+                });
+                void gate.run(async () => {
+                  await apiAddCotizacionItem(eventoId, active.id, {
+                    servicio: "Nuevo ítem",
+                    proveedor: "",
+                    pax: ev.pax || 0,
+                    unitCur: ev.cur,
+                    unit: 0,
                   });
-                  if (!ok) return;
-                })();
+                  const v = await apiFetchEventoCotizaciones(eventoId);
+                  setCotizacionesForEvento(eventoId, v);
+                });
               }}
               disabled={!canEdit}
             >
@@ -289,21 +296,25 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                   if (!a) return;
                   const prov = proveedores.find((p) => p.nombre === a.proveedorSugerido);
                   if (prov) ensurePedido(eventoId, prov.id);
-                  (async () => {
-                    const ok = await gate.run(async () => {
-                      await apiAddCotizacionItem(eventoId, active.id, {
-                        servicio: a.nombre,
-                        proveedor: a.proveedorSugerido === "—" ? "" : a.proveedorSugerido,
-                        pax: ev.pax || 0,
-                        unitCur: "USD",
-                        unit: a.precioUsd,
-                      });
-                      const v = await apiFetchEventoCotizaciones(eventoId);
-                      setCotizacionesForEvento(eventoId, v);
-                      return true;
+                  if (!canEdit) return void gate.ensureAuthed();
+                  addItem(eventoId, active.id, {
+                    servicio: a.nombre,
+                    proveedor: a.proveedorSugerido === "—" ? "" : a.proveedorSugerido,
+                    pax: ev.pax || 0,
+                    unitCur: "USD",
+                    unit: a.precioUsd,
+                  });
+                  void gate.run(async () => {
+                    await apiAddCotizacionItem(eventoId, active.id, {
+                      servicio: a.nombre,
+                      proveedor: a.proveedorSugerido === "—" ? "" : a.proveedorSugerido,
+                      pax: ev.pax || 0,
+                      unitCur: "USD",
+                      unit: a.precioUsd,
                     });
-                    if (!ok) return;
-                  })();
+                    const v = await apiFetchEventoCotizaciones(eventoId);
+                    setCotizacionesForEvento(eventoId, v);
+                  });
                 }}
               />
             </div>
@@ -537,6 +548,9 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                       if (!canEdit) return;
                       void gate.run(async () => {
                         await apiDeleteCotizacionItem(eventoId, active.id, r.id);
+                        // best-effort re-sync
+                        const v = await apiFetchEventoCotizaciones(eventoId);
+                        setCotizacionesForEvento(eventoId, v);
                       });
                     }}
                     disabled={!canEdit}
