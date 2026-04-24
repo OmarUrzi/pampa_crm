@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import { API_BASE } from "./client";
 
 export type ApiActividadFoto = {
   id: string;
@@ -7,6 +8,14 @@ export type ApiActividadFoto = {
   hasBytes?: boolean;
   blobUrl?: string | null;
 };
+
+export function catalogoFotoDisplayUrl(f: ApiActividadFoto): string | null {
+  const raw = (f.url ?? f.blobUrl ?? "").trim();
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith("/")) return `${API_BASE}${raw}`;
+  return raw;
+}
 
 export type ApiActividad = {
   id: string;

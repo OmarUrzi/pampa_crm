@@ -8,6 +8,7 @@ import { apiCreateActividad, apiDeleteActividad, apiPatchActividad, apiUploadAct
 import { useCanEdit } from "../auth/perms";
 import { useAuthGate } from "../auth/useAuthGate";
 import { ConfirmModal } from "./ConfirmModal";
+import { API_BASE } from "../api/client";
 
 type FormState = {
   nombre: string;
@@ -44,6 +45,14 @@ function toForm(a: CatalogoActividad, proveedores: { id: string; nombre: string 
   };
 }
 
+function toAbsoluteUrl(url: string) {
+  const u = String(url ?? "").trim();
+  if (!u) return "";
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  if (u.startsWith("/")) return `${API_BASE}${u}`;
+  return u;
+}
+
 export function CatalogoActividadFormModal({
   mode,
   initial,
@@ -67,6 +76,8 @@ export function CatalogoActividadFormModal({
     if (mode === "edit" && initial) return toForm(initial, proveedores);
     return { nombre: "", descripcion: "", categoria: "", precioUsd: 0, proveedorId: "", fotos: [], uploads: [] };
   });
+
+  const fotosWithAbs = useMemo(() => f.fotos.map((ph) => ({ ...ph, url: toAbsoluteUrl(ph.url) })), [f.fotos]);
 
   const provItems = useMemo(
     () => [
@@ -279,8 +290,33 @@ export function CatalogoActividadFormModal({
         <div style={{ gridColumn: "1 / -1" }}>
           <label style={labelStyle}>Álbum de fotos (URLs)</label>
           <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
-            {(f.fotos.length ? f.fotos : [{ id: "tmp-empty", url: "" }]).map((ph, idx) => (
+            {(fotosWithAbs.length ? fotosWithAbs : [{ id: "tmp-empty", url: "" }]).map((ph, idx) => (
               <div key={idx} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {ph.url ? (
+                  <a
+                    href={ph.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      width: 40,
+                      height: 28,
+                      borderRadius: 8,
+                      overflow: "hidden",
+                      border: "0.5px solid var(--color-border-tertiary)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      background: "var(--color-background-secondary)",
+                      textDecoration: "none",
+                    }}
+                    title="Ver foto"
+                  >
+                    <img src={ph.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  </a>
+                ) : (
+                  <div style={{ width: 40, height: 28, borderRadius: 8, border: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-secondary)" }} />
+                )}
                 <input
                   value={ph.url}
                   onChange={(e) => {

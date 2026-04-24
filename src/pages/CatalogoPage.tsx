@@ -3,6 +3,7 @@ import { Button, Chip, Pill } from "../ui/ui";
 import { useAppStore } from "../state/useAppStore";
 import { CatalogoActividadFormModal } from "../ui/CatalogoActividadFormModal";
 import { apiListCatalogo } from "../api/catalogo";
+import { API_BASE } from "../api/client";
 import { useCanEdit } from "../auth/perms";
 import { useAuthGate } from "../auth/useAuthGate";
 
@@ -64,7 +65,13 @@ export function CatalogoPage() {
                 categoria: a.categoria,
                 precioUsd: a.precioUsd ?? 0,
                 proveedorSugerido: a.proveedorTxt ?? "—",
-                fotos: a.fotos.map((f) => ({ id: f.id, url: (f.url ?? f.blobUrl)! })).filter((x) => !!x.url),
+                fotos: a.fotos
+                  .map((f) => {
+                    const u = f.url ?? f.blobUrl ?? "";
+                    const url = u.startsWith("/") ? `${API_BASE}${u}` : u;
+                    return { id: f.id, url };
+                  })
+                  .filter((x) => !!x.url),
               })),
             );
           }}
@@ -85,7 +92,13 @@ export function CatalogoPage() {
                 categoria: a.categoria,
                 precioUsd: a.precioUsd ?? 0,
                 proveedorSugerido: a.proveedorTxt ?? "—",
-                fotos: a.fotos.map((f) => ({ id: f.id, url: (f.url ?? f.blobUrl)! })).filter((x) => !!x.url),
+                fotos: a.fotos
+                  .map((f) => {
+                    const u = f.url ?? f.blobUrl ?? "";
+                    const url = u.startsWith("/") ? `${API_BASE}${u}` : u;
+                    return { id: f.id, url };
+                  })
+                  .filter((x) => !!x.url),
               })),
             );
           }}
