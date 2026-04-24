@@ -23,6 +23,7 @@ export function ConfirmModal({
   return (
     <Modal
       title={title}
+      zIndex={120}
       onClose={() => {
         if (busy) return;
         onClose();

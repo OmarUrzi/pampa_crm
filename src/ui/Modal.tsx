@@ -5,11 +5,13 @@ export function Modal({
   children,
   onClose,
   footer,
+  zIndex,
 }: {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
   onClose: () => void;
+  zIndex?: number;
 }) {
   return (
     <div
@@ -23,7 +25,7 @@ export function Modal({
         alignItems: "center",
         justifyContent: "center",
         padding: 18,
-        zIndex: 50,
+        zIndex: zIndex ?? 50,
       }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
