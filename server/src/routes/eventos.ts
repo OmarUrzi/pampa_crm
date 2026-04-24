@@ -104,8 +104,10 @@ export async function registerEventoRoutes(app: FastifyInstance) {
     const q = req.query as any;
     const token = typeof q?.token === "string" ? q.token : undefined;
     try {
-      // @fastify/jwt supports passing token explicitly.
-      await (req as any).jwtVerify(token ? { token } : undefined);
+      const raw = (token ?? "").trim().replace(/^Bearer\s+/i, "");
+      if (!raw) return reply.code(401).send({ error: "unauthorized" });
+      // Some setups don't accept passing token to req.jwtVerify(); verify directly via server jwt.
+      (req as any).user = (req.server as any).jwt.verify(raw);
     } catch {
       return reply.code(401).send({ error: "unauthorized" });
     }
