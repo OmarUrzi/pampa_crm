@@ -142,11 +142,17 @@ export async function registerEventoRoutes(app: FastifyInstance) {
     if (evRef && evRef.includes("@")) emails.push(evRef);
     if (!emails.length) return reply.code(200).send({ ok: true, note: "no_emails" });
 
+    // SSE is cross-origin from Cloudflare Pages -> Fly: must set CORS headers explicitly because we write raw headers.
+    const origin = String((req.headers as any)?.origin ?? "");
+    const allowOrigin = origin || "*";
+
     reply.raw.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
       connection: "keep-alive",
       "x-accel-buffering": "no",
+      "access-control-allow-origin": allowOrigin,
+      vary: "Origin",
     });
     reply.raw.write(`event: ready\ndata: ${JSON.stringify({ ok: true })}\n\n`);
 
