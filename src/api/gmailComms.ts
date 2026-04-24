@@ -7,6 +7,7 @@ export type GmailComm = {
   toEmails: string[];
   subject: string | null;
   snippet: string | null;
+  bodyText?: string | null;
   at: string;
 };
 

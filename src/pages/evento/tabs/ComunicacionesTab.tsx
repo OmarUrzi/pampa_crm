@@ -245,10 +245,7 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
               <div><strong>Fecha:</strong> {new Date(gmailOpen.at).toLocaleString()}</div>
             </div>
             <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.55 }}>
-              {(gmailOpen.snippet ?? "").trim() || "(sin contenido)"}{" "}
-              <span style={{ color: "var(--color-text-tertiary)" }}>
-                (guardamos solo snippet/metadata por ahora)
-              </span>
+              {(gmailOpen.bodyText ?? gmailOpen.snippet ?? "").trim() || "(sin contenido)"}
             </div>
           </div>
         </div>

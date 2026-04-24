@@ -80,12 +80,45 @@ async function pruneOldMessages() {
   });
 }
 
+function decodeB64Url(s: string) {
+  const norm = s.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = norm.length % 4 === 0 ? "" : "=".repeat(4 - (norm.length % 4));
+  return Buffer.from(norm + pad, "base64").toString("utf8");
+}
+
+function stripHtml(html: string) {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<\/?[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractBodyText(payload: any): string {
+  const plain: string[] = [];
+  const html: string[] = [];
+  function walk(p: any) {
+    if (!p) return;
+    const mime = String(p.mimeType ?? "").toLowerCase();
+    const data = p?.body?.data;
+    if (typeof data === "string" && data.length) {
+      const txt = decodeB64Url(data);
+      if (mime.startsWith("text/plain")) plain.push(txt);
+      else if (mime.startsWith("text/html")) html.push(stripHtml(txt));
+    }
+    const parts = Array.isArray(p.parts) ? p.parts : [];
+    for (const ch of parts) walk(ch);
+  }
+  walk(payload);
+  return (plain.length ? plain.join("\n") : html.join("\n")).trim();
+}
+
 async function ingestMessage(gmail: any, mailboxId: string, gmailId: string, relevant: Set<string>) {
   const full = await gmail.users.messages.get({
     userId: "me",
     id: gmailId,
-    format: "metadata",
-    metadataHeaders: ["From", "To", "Cc", "Subject", "Date"],
+    format: "full",
   });
   const headers = new Map<string, string>(
     (full.data.payload?.headers ?? []).map((h: any) => [
@@ -102,6 +135,9 @@ async function ingestMessage(gmail: any, mailboxId: string, gmailId: string, rel
 
   if (!shouldStoreMessage(relevant, fromEmail, to)) return false;
 
+  const bodyTextRaw = extractBodyText(full.data.payload);
+  const bodyText = bodyTextRaw ? bodyTextRaw.slice(0, 40_000) : null;
+
   await prisma.gmailMessage.upsert({
     where: { mailboxId_gmailId: { mailboxId, gmailId } },
     update: {
@@ -110,6 +146,7 @@ async function ingestMessage(gmail: any, mailboxId: string, gmailId: string, rel
       toEmails: to.length ? JSON.stringify(to) : null,
       subject: headers.get("subject") ?? null,
       snippet: full.data.snippet ?? null,
+      bodyText,
       internalAt: full.data.internalDate ? new Date(Number(full.data.internalDate)) : null,
     },
     create: {
@@ -120,6 +157,7 @@ async function ingestMessage(gmail: any, mailboxId: string, gmailId: string, rel
       toEmails: to.length ? JSON.stringify(to) : null,
       subject: headers.get("subject") ?? null,
       snippet: full.data.snippet ?? null,
+      bodyText,
       internalAt: full.data.internalDate ? new Date(Number(full.data.internalDate)) : null,
     },
   });

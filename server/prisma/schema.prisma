@@ -113,6 +113,7 @@ model GmailMessage {
   toEmails    String?
   subject     String?
   snippet     String?
+  bodyText    String?
   internalAt  DateTime?
   createdAt   DateTime @default(now())
 

@@ -91,6 +91,7 @@ export async function registerEventoRoutes(app: FastifyInstance) {
         toEmails: m.toEmails ? (JSON.parse(m.toEmails) as string[]) : [],
         subject: m.subject,
         snippet: m.snippet,
+        bodyText: (m as any).bodyText ?? null,
         at: m.internalAt ?? m.createdAt,
       })),
     };
