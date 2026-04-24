@@ -47,6 +47,7 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
   const [filter, setFilter] = useState<"Todos" | Exclude<EventoCommsTipo, "Mail"> | "Gmail">("Todos");
   const [gmail, setGmail] = useState<GmailComm[]>([]);
   const [loadingGmail, setLoadingGmail] = useState(false);
+  const [gmailOpen, setGmailOpen] = useState<GmailComm | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -122,34 +123,133 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
             <div style={{ fontSize: 12, fontWeight: 900 }}>Gmail (auto)</div>
             <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{loadingGmail ? "actualizando…" : ""}</div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {gmail.map((m) => (
-              <div
-                key={m.id}
-                style={{
-                  padding: "10px 13px",
-                  borderRadius: 12,
-                  border: "0.5px solid var(--color-border-tertiary)",
-                  background: "var(--color-background-secondary)",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
-                  <div style={{ fontSize: 12, fontWeight: 900 }}>{m.subject ?? "—"}</div>
-                  <div style={{ fontSize: 10, color: "var(--color-text-secondary)" }}>
-                    {new Date(m.at).toLocaleString()}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {gmail.map((m) => {
+              const mailbox = (m.mailbox ?? "").trim().toLowerCase();
+              const from = (m.fromEmail ?? "").trim().toLowerCase();
+              const isOut = !!mailbox && !!from && mailbox === from;
+              const bg = isOut ? "var(--color-primary-subtle)" : "var(--color-background-secondary)";
+              const head = isOut ? `vos` : (m.fromEmail ?? "—");
+              const to = Array.isArray(m.toEmails) ? m.toEmails.filter(Boolean) : [];
+              const subject = (m.subject ?? "").trim() || "(sin asunto)";
+              const snippet = (m.snippet ?? "").trim() || "(sin contenido)";
+              return (
+                <div
+                  key={m.id}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    justifyContent: isOut ? "flex-end" : "flex-start",
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexDirection: isOut ? "row-reverse" : "row", maxWidth: "92%" }}>
+                    {avatar(head, isOut ? "rgba(234,101,54,0.18)" : "rgba(59,130,246,0.18)", isOut ? "#EA6536" : "#3B82F6")}
+                    <button
+                      type="button"
+                      onClick={() => setGmailOpen(m)}
+                      style={{
+                        maxWidth: 720,
+                        width: "min(720px, 100%)",
+                        textAlign: "left",
+                        padding: "10px 13px",
+                        borderRadius: 12,
+                        border: "0.5px solid var(--color-border-tertiary)",
+                        background: bg,
+                        cursor: "pointer",
+                      }}
+                      title="Ver detalles"
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
+                        <div style={{ fontSize: 11, fontWeight: 900 }}>
+                          {head}
+                          <span style={{ fontWeight: 700, color: "var(--color-text-secondary)" }}>
+                            {" "}
+                            {isOut ? "→" : "·"} {isOut ? (to.join(", ") || "—") : (m.mailbox ?? "—")}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--color-text-secondary)", flexShrink: 0 }}>
+                          {new Date(m.at).toLocaleString()}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {subject}
+                      </div>
+                      <div style={{ fontSize: 12, lineHeight: 1.45, color: "var(--color-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2 as any, WebkitBoxOrient: "vertical" as any }}>
+                        {snippet}
+                      </div>
+                    </button>
                   </div>
                 </div>
-                <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6 }}>
-                  <strong>{m.mailbox}</strong> · de {m.fromEmail ?? "—"}
-                </div>
-                <div style={{ fontSize: 12 }}>{m.snippet ?? "—"}</div>
-              </div>
-            ))}
+              );
+            })}
             {!gmail.length ? (
               <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
                 No hay mensajes Gmail asociados (o falta sync/mailboxes/contactos con email).
               </div>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {gmailOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setGmailOpen(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 14,
+            zIndex: 50,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(760px, 96vw)",
+              borderRadius: 14,
+              border: "0.5px solid var(--color-border-tertiary)",
+              background: "var(--color-background-primary)",
+              boxShadow: "var(--shadow-lg)",
+              padding: 14,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+              <div style={{ fontWeight: 900, fontSize: 13 }}>
+                {(gmailOpen.subject ?? "").trim() || "(sin asunto)"}
+              </div>
+              <button
+                type="button"
+                onClick={() => setGmailOpen(null)}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--color-text-secondary)",
+                  cursor: "pointer",
+                  fontWeight: 900,
+                  fontSize: 14,
+                }}
+                aria-label="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 6, display: "grid", gap: 4 }}>
+              <div><strong>Mailbox:</strong> {gmailOpen.mailbox}</div>
+              <div><strong>De:</strong> {gmailOpen.fromEmail ?? "—"}</div>
+              <div><strong>Para:</strong> {(gmailOpen.toEmails ?? []).join(", ") || "—"}</div>
+              <div><strong>Fecha:</strong> {new Date(gmailOpen.at).toLocaleString()}</div>
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.55 }}>
+              {(gmailOpen.snippet ?? "").trim() || "(sin contenido)"}{" "}
+              <span style={{ color: "var(--color-text-tertiary)" }}>
+                (guardamos solo snippet/metadata por ahora)
+              </span>
+            </div>
           </div>
         </div>
       ) : null}
