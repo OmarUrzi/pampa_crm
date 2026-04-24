@@ -124,7 +124,23 @@ export const useAppStore = create<AppState>(() => ({
     loadPersisted<Persisted>()?.clientes ??
     seedClientesFromEventos(loadPersisted<Persisted>()?.eventos ?? seedData.eventos),
   proveedores: loadPersisted<Persisted>()?.proveedores ?? seedProveedores,
-  catalogo: loadPersisted<Persisted>()?.catalogo ?? catalogoActividades,
+  catalogo: (() => {
+    const raw = loadPersisted<Persisted>()?.catalogo ?? catalogoActividades;
+    // Back-compat: older persisted data stored fotos as string[]; normalize to {id,url}[]
+    return (raw ?? []).map((a: any) => {
+      const fotosRaw = Array.isArray(a?.fotos) ? a.fotos : [];
+      const fotos =
+        fotosRaw.length && typeof fotosRaw[0] === "string"
+          ? fotosRaw
+              .filter(Boolean)
+              .map((u: string) => ({ id: `legacy-url-${u}`, url: u }))
+          : fotosRaw
+              .filter(Boolean)
+              .map((p: any) => ({ id: String(p?.id ?? ""), url: String(p?.url ?? "") }))
+              .filter((p: any) => p.id && p.url);
+      return { ...a, fotos };
+    });
+  })(),
   cotizacionesByEventoId:
     loadPersisted<Persisted>()?.cotizacionesByEventoId ?? {
       "1": seedCotizaciones("1"),

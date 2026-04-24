@@ -21,13 +21,25 @@ type FormState = {
 
 function toForm(a: CatalogoActividad, proveedores: { id: string; nombre: string }[]): FormState {
   const prov = proveedores.find((p) => p.nombre === a.proveedorSugerido);
+  const fotos = (a.fotos ?? [])
+    .map((x: any) => {
+      if (!x) return null;
+      if (typeof x === "string") {
+        const url = x.trim();
+        return url ? { id: `tmp-url-${Date.now()}-${Math.random().toString(16).slice(2)}`, url } : null;
+      }
+      const id = String((x as any).id ?? "").trim();
+      const url = String((x as any).url ?? "").trim();
+      return id && url ? { id, url } : null;
+    })
+    .filter(Boolean) as Array<{ id: string; url: string }>;
   return {
     nombre: a.nombre,
     descripcion: a.descripcion ?? "",
     categoria: a.categoria,
     precioUsd: a.precioUsd,
     proveedorId: prov?.id ?? "",
-    fotos: a.fotos ?? [],
+    fotos,
     uploads: [],
   };
 }
