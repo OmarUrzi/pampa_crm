@@ -4,7 +4,7 @@ import { Button } from "./ui";
 import { SearchDropdown } from "./SearchDropdown";
 import { useAppStore } from "../state/useAppStore";
 import type { CatalogoActividad } from "../state/catalogo";
-import { apiCreateActividad, apiDeleteActividad, apiPatchActividad } from "../api/catalogo";
+import { apiCreateActividad, apiDeleteActividad, apiPatchActividad, apiUploadActividadFoto } from "../api/catalogo";
 import { useCanEdit } from "../auth/perms";
 import { useAuthGate } from "../auth/useAuthGate";
 
@@ -15,6 +15,7 @@ type FormState = {
   precioUsd: number;
   proveedorId: string;
   fotos: string[];
+  uploads: File[];
 };
 
 function toForm(a: CatalogoActividad, proveedores: { id: string; nombre: string }[]): FormState {
@@ -26,6 +27,7 @@ function toForm(a: CatalogoActividad, proveedores: { id: string; nombre: string 
     precioUsd: a.precioUsd,
     proveedorId: prov?.id ?? "",
     fotos: a.fotos ?? [],
+    uploads: [],
   };
 }
 
@@ -49,7 +51,7 @@ export function CatalogoActividadFormModal({
 
   const [f, setF] = useState<FormState>(() => {
     if (mode === "edit" && initial) return toForm(initial, proveedores);
-    return { nombre: "", descripcion: "", categoria: "", precioUsd: 0, proveedorId: "", fotos: [] };
+    return { nombre: "", descripcion: "", categoria: "", precioUsd: 0, proveedorId: "", fotos: [], uploads: [] };
   });
 
   const provItems = useMemo(
@@ -118,6 +120,16 @@ export function CatalogoActividadFormModal({
         const res = await apiCreateActividad(payload);
         const created = mapToStore(res.actividad);
         setCatalogo((useAppStore.getState().catalogo ?? []).map((x) => (x.id === tmpId ? created : x)));
+
+        // Upload selected files (best-effort). Refresh will happen in caller (CatalogoPage onSaved).
+        for (const file of f.uploads) {
+          try {
+            await apiUploadActividadFoto({ actividadId: created.id, file });
+          } catch {
+            // ignore (user can retry)
+          }
+        }
+
         await afterSavedSafe();
         return;
       }
@@ -131,6 +143,15 @@ export function CatalogoActividadFormModal({
       });
       const updated = mapToStore(res.actividad);
       setCatalogo((useAppStore.getState().catalogo ?? []).map((x) => (x.id === updated.id ? updated : x)));
+
+      for (const file of f.uploads) {
+        try {
+          await apiUploadActividadFoto({ actividadId: updated.id, file });
+        } catch {
+          // ignore
+        }
+      }
+
       await afterSavedSafe();
     }).finally(() => {
       setBusy(false);
@@ -271,8 +292,28 @@ export function CatalogoActividadFormModal({
             </div>
           </div>
           <div style={{ marginTop: 6, fontSize: 11, color: "var(--color-text-secondary)" }}>
-            Por ahora usamos URLs. En MVP lo pasamos a subida de archivos.
+            Podés usar URLs o subir archivos (se guardan en la base).
           </div>
+        </div>
+
+        <div style={{ gridColumn: "1 / -1" }}>
+          <label style={labelStyle}>Subir fotos (archivos)</label>
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              setF((s) => ({ ...s, uploads: files }));
+            }}
+            style={{ ...inputStyle, padding: "7px 11px" }}
+            disabled={!canEdit}
+          />
+          {f.uploads.length ? (
+            <div style={{ marginTop: 6, fontSize: 11, color: "var(--color-text-secondary)" }}>
+              {f.uploads.length} archivo(s) seleccionados.
+            </div>
+          ) : null}
         </div>
       </div>
     </Modal>

@@ -4,6 +4,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import jwt from "@fastify/jwt";
+import multipart from "@fastify/multipart";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { env } from "./config.js";
@@ -67,6 +68,10 @@ await app.register(cors, {
 });
 
 await app.register(cookie);
+
+await app.register(multipart, {
+  limits: { fileSize: 8 * 1024 * 1024 }, // 8MB per file
+});
 
 await app.register(jwt, {
   secret: env.JWT_SECRET,
