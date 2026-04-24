@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CotizacionVersion, Currency } from "../../../types";
 import { Button } from "../../../ui/ui";
+import { ConfirmModal } from "../../../ui/ConfirmModal";
 import { useAppStore } from "../../../state/useAppStore";
 import { apiFetch } from "../../../api/client";
 import { SearchDropdown } from "../../../ui/SearchDropdown";
@@ -44,6 +45,7 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
   );
   const [showNewProv, setShowNewProv] = useState(false);
   const [provRowItemId, setProvRowItemId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<null | { versionId: string; itemId: string }>(null);
 
   const active = useMemo<CotizacionVersion | null>(() => {
     if (!activeVersionId) return null;
@@ -144,6 +146,30 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
 
   return (
     <div>
+      {confirmDelete ? (
+        <ConfirmModal
+          title="Eliminar ítem"
+          message="¿Realmente querés eliminar este ítem de la cotización?"
+          confirmText="Sí, eliminar"
+          cancelText="Cancelar"
+          danger
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => {
+            const { versionId, itemId } = confirmDelete;
+            setConfirmDelete(null);
+            if (!canEdit) {
+              gate.ensureAuthed();
+              return;
+            }
+            removeItem(eventoId, versionId, itemId);
+            void gate.run(async () => {
+              await apiDeleteCotizacionItem(eventoId, versionId, itemId);
+              const v = await apiFetchEventoCotizaciones(eventoId);
+              setCotizacionesForEvento(eventoId, v);
+            });
+          }}
+        />
+      ) : null}
       {showNewProv ? (
         <ProveedorFormModal
           mode="create"

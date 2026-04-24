@@ -6,6 +6,7 @@ import { Modal } from "./Modal";
 import { apiCreateProveedor, apiPatchProveedor } from "../api/proveedores";
 import { useCanEdit } from "../auth/perms";
 import { useAuthGate } from "../auth/useAuthGate";
+import { ConfirmModal } from "./ConfirmModal";
 
 type FormState = {
   nombre: string;
@@ -47,6 +48,7 @@ export function ProveedorFormModal({
     return { nombre: "", categoria: "", contactos: [] };
   });
   const [saving, setSaving] = useState(false);
+  const [confirmRemoveContact, setConfirmRemoveContact] = useState<number | null>(null);
 
   const error = useMemo(() => {
     if (!f.nombre.trim()) return "Falta el nombre del proveedor.";
@@ -80,7 +82,7 @@ export function ProveedorFormModal({
       gate.ensureAuthed();
       return;
     }
-    setF((s) => ({ ...s, contactos: s.contactos.filter((_, i) => i !== idx) }));
+    setConfirmRemoveContact(idx);
   }
 
   async function save() {
@@ -187,6 +189,20 @@ export function ProveedorFormModal({
         </>
       }
     >
+      {confirmRemoveContact !== null ? (
+        <ConfirmModal
+          title="Eliminar contacto"
+          message="¿Realmente querés eliminar este contacto?"
+          confirmLabel="Sí, eliminar"
+          onCancel={() => setConfirmRemoveContact(null)}
+          onConfirm={() => {
+            const idx = confirmRemoveContact;
+            setConfirmRemoveContact(null);
+            setF((s) => ({ ...s, contactos: s.contactos.filter((_, i) => i !== idx) }));
+          }}
+        />
+      ) : null}
+
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 12 }}>
         <div>
           <label style={labelStyle}>Proveedor</label>

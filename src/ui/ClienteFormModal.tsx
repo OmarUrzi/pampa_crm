@@ -3,6 +3,7 @@ import type { Cliente, Contacto } from "../types";
 import { useAppStore } from "../state/useAppStore";
 import { Button } from "./ui";
 import { Modal } from "./Modal";
+import { ConfirmModal } from "./ConfirmModal";
 import { apiCreateCliente, apiPatchCliente } from "../api/clientes";
 import { useAuthGate } from "../auth/useAuthGate";
 import { useCanEdit } from "../auth/perms";
@@ -53,6 +54,7 @@ export function ClienteFormModal({
   const canEdit = useCanEdit();
   const notice = useNoticeStore((s) => s);
   const [busy, setBusy] = useState(false);
+  const [confirmDelContactIdx, setConfirmDelContactIdx] = useState<number | null>(null);
 
   const [f, setF] = useState<FormState>(() => {
     if (mode === "edit" && initial) return toForm(initial);
@@ -257,7 +259,7 @@ export function ClienteFormModal({
               </div>
 
               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-                <Button type="button" onClick={() => deleteContact(idx)}>
+                <Button type="button" onClick={() => setConfirmDelContactIdx(idx)}>
                   Eliminar
                 </Button>
               </div>
@@ -272,6 +274,19 @@ export function ClienteFormModal({
 
       {error ? (
         <div style={{ marginTop: 12, fontSize: 12, color: "#b91c1c", fontWeight: 700 }}>{error}</div>
+      ) : null}
+
+      {confirmDelContactIdx !== null ? (
+        <ConfirmModal
+          title="Eliminar contacto"
+          description="¿Realmente querés eliminar este contacto?"
+          confirmLabel="Sí, eliminar"
+          onCancel={() => setConfirmDelContactIdx(null)}
+          onConfirm={() => {
+            deleteContact(confirmDelContactIdx);
+            setConfirmDelContactIdx(null);
+          }}
+        />
       ) : null}
     </Modal>
   );

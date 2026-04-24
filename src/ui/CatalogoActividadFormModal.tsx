@@ -7,6 +7,7 @@ import type { CatalogoActividad } from "../state/catalogo";
 import { apiCreateActividad, apiDeleteActividad, apiPatchActividad, apiUploadActividadFoto } from "../api/catalogo";
 import { useCanEdit } from "../auth/perms";
 import { useAuthGate } from "../auth/useAuthGate";
+import { ConfirmModal } from "./ConfirmModal";
 
 type FormState = {
   nombre: string;
@@ -48,6 +49,7 @@ export function CatalogoActividadFormModal({
   const canEdit = useCanEdit();
   const gate = useAuthGate();
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [f, setF] = useState<FormState>(() => {
     if (mode === "edit" && initial) return toForm(initial, proveedores);
@@ -159,38 +161,46 @@ export function CatalogoActividadFormModal({
   }
 
   return (
-    <Modal
-      title={mode === "create" ? "Nueva actividad" : "Editar actividad"}
-      onClose={onClose}
-      footer={
-        <>
-          {canDelete ? (
-            <Button
-              type="button"
-              onClick={() => {
-                if (!initial) return;
-                void gate.run(async () => {
-                  await apiDeleteActividad(initial.id);
-                  setCatalogo(actividades.filter((x) => x.id !== initial.id));
-                  await afterSavedSafe();
-                  onClose();
-                });
-              }}
-              disabled={!canEdit}
-            >
-              Eliminar
+    <>
+      {confirmDelete && canDelete && initial ? (
+        <ConfirmModal
+          title="Eliminar actividad"
+          message="¿Realmente querés eliminar esta actividad del catálogo?"
+          confirmLabel="Sí, eliminar"
+          intent="danger"
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => {
+            setConfirmDelete(false);
+            void gate.run(async () => {
+              await apiDeleteActividad(initial.id);
+              setCatalogo(actividades.filter((x) => x.id !== initial.id));
+              await afterSavedSafe();
+              onClose();
+            });
+          }}
+        />
+      ) : null}
+
+      <Modal
+        title={mode === "create" ? "Nueva actividad" : "Editar actividad"}
+        onClose={onClose}
+        footer={
+          <>
+            {canDelete ? (
+              <Button type="button" onClick={() => setConfirmDelete(true)} disabled={!canEdit}>
+                Eliminar
+              </Button>
+            ) : null}
+            <Button type="button" onClick={onClose}>
+              Cancelar
             </Button>
-          ) : null}
-          <Button type="button" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button variant="primary" type="button" onClick={save} disabled={!canEdit || busy}>
-            {busy ? "Guardando…" : "Guardar"}
-          </Button>
-        </>
-      }
-    >
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 12 }}>
+            <Button variant="primary" type="button" onClick={save} disabled={!canEdit || busy}>
+              {busy ? "Guardando…" : "Guardar"}
+            </Button>
+          </>
+        }
+      >
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 12 }}>
         <div>
           <label style={labelStyle}>Actividad</label>
           <input
@@ -315,8 +325,9 @@ export function CatalogoActividadFormModal({
             </div>
           ) : null}
         </div>
-      </div>
-    </Modal>
+        </div>
+      </Modal>
+    </>
   );
 }
 
