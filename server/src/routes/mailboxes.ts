@@ -6,6 +6,7 @@ import { google } from "googleapis";
 import { env } from "../config.js";
 import { decryptSecret } from "../google/crypto.js";
 import { triggerBackfillAllForMailbox, triggerBackfillForEmailAcrossMailboxes } from "../services/gmailBackfill.js";
+import { publishGmailIngested } from "../services/gmailEvents.js";
 
 async function gmailClientForMailbox(mailboxId: string) {
   const mb = await prisma.googleMailbox.findUnique({ where: { id: mailboxId } });
@@ -145,6 +146,8 @@ async function ingestMessage(gmail: any, mailboxId: string, gmailId: string, rel
   const bodyTextRaw = extractBodyText(full.data.payload);
   const bodyText = bodyTextRaw ? bodyTextRaw.slice(0, 40_000) : null;
 
+  const internalAt = full.data.internalDate ? new Date(Number(full.data.internalDate)) : null;
+
   await prisma.gmailMessage.upsert({
     where: { mailboxId_gmailId: { mailboxId, gmailId } },
     update: {
@@ -154,7 +157,7 @@ async function ingestMessage(gmail: any, mailboxId: string, gmailId: string, rel
       subject: headers.get("subject") ?? null,
       snippet: full.data.snippet ?? null,
       bodyText,
-      internalAt: full.data.internalDate ? new Date(Number(full.data.internalDate)) : null,
+      internalAt,
     },
     create: {
       mailboxId,
@@ -165,9 +168,24 @@ async function ingestMessage(gmail: any, mailboxId: string, gmailId: string, rel
       subject: headers.get("subject") ?? null,
       snippet: full.data.snippet ?? null,
       bodyText,
-      internalAt: full.data.internalDate ? new Date(Number(full.data.internalDate)) : null,
+      internalAt,
     },
   });
+
+  try {
+    const mb = await prisma.googleMailbox.findUnique({ where: { id: mailboxId }, select: { email: true } });
+    if (mb?.email) {
+      publishGmailIngested({
+        at: (internalAt ?? new Date()).toISOString(),
+        mailboxEmail: mb.email,
+        fromEmail,
+        toEmails: to,
+        gmailId,
+      });
+    }
+  } catch {
+    // ignore
+  }
   return true;
 }
 

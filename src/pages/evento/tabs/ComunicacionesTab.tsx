@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Chip } from "../../../ui/ui";
 import { useAppStore } from "../../../state/useAppStore";
 import type { EventoComm, EventoCommsTipo } from "../../../types";
@@ -7,6 +7,7 @@ import { refreshEventoDetailIntoStore } from "../../../api/hydrateEventoDetail";
 import { useCanEdit } from "../../../auth/perms";
 import { useAuthGate } from "../../../auth/useAuthGate";
 import { apiEventoGmailComms, type GmailComm } from "../../../api/gmailComms";
+import { API_BASE, getToken } from "../../../api/client";
 
 function avatar(name: string, bg: string, fg: string) {
   const init = name
@@ -49,6 +50,7 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
   const [loadingGmail, setLoadingGmail] = useState(false);
   const [gmailOpen, setGmailOpen] = useState<GmailComm | null>(null);
   const [gmailTick, setGmailTick] = useState(0);
+  const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -68,43 +70,64 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
     // Initial fetch on tab open.
     void refresh();
 
-    // Low-request strategy: backoff polling only while user is looking at Gmail/Todos,
-    // and pause when tab is not visible.
+    // Prefer SSE (no polling). Fallback to backoff polling if SSE can't connect.
     const shouldPoll = filter === "Gmail" || filter === "Todos";
     if (!shouldPoll) return () => {
       alive = false;
     };
 
-    let delayMs = 12_000;
-    let lastTopKey = "";
+    let usedFallbackPolling = false;
+    let delayMs = 30_000;
     let t: any = null;
-    function schedule() {
+    async function pollLoop() {
       if (!alive) return;
       if (document.visibilityState !== "visible") {
-        // Check later; don't spam while hidden.
-        t = setTimeout(schedule, 60_000);
+        t = setTimeout(pollLoop, 60_000);
         return;
       }
-      t = setTimeout(async () => {
-        const next = await refresh();
-        const top = next?.[0];
-        const topKey = top ? `${top.id}:${top.at}:${top.subject ?? ""}:${top.snippet ?? ""}` : "";
-        const changed = topKey && topKey !== lastTopKey;
-        if (changed) {
-          lastTopKey = topKey;
-          delayMs = 12_000; // stay responsive while messages are flowing
-        } else {
-          // backoff up to 2 minutes
-          delayMs = Math.min(120_000, delayMs === 12_000 ? 30_000 : delayMs === 30_000 ? 60_000 : 120_000);
-        }
-        schedule();
-      }, delayMs);
+      await refresh();
+      t = setTimeout(pollLoop, delayMs);
     }
-    schedule();
+
+    // SSE: reconnects automatically. When an event arrives, do a single refresh.
+    const token = getToken() ?? "";
+    const url = `${API_BASE}/eventos/${eventoId}/gmail-stream?token=${encodeURIComponent(token)}`;
+    try {
+      const es = new EventSource(url);
+      esRef.current = es;
+      es.addEventListener("gmail", () => {
+        void refresh();
+      });
+      es.addEventListener("ready", () => {
+        // connected
+      });
+      es.onerror = () => {
+        // If SSE is blocked by proxy/CORS, fall back to low-rate polling.
+        if (usedFallbackPolling) return;
+        usedFallbackPolling = true;
+        try {
+          es.close();
+        } catch {
+          // ignore
+        }
+        void pollLoop();
+      };
+    } catch {
+      usedFallbackPolling = true;
+      void pollLoop();
+    }
 
     return () => {
       alive = false;
       if (t) clearTimeout(t);
+      if (esRef.current) {
+        try {
+          esRef.current.close();
+        } catch {
+          // ignore
+        }
+        esRef.current = null;
+      }
     };
   }, [eventoId, filter, gate, gmailTick]);
 

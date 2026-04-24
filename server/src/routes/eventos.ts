@@ -4,6 +4,7 @@ import { prisma } from "../prisma.js";
 import { jwtVerifyGuard } from "../auth/jwtGuards.js";
 import { requireWriteAccess } from "../auth/roleGuards.js";
 import { auditLog } from "../audit.js";
+import { subscribeEmails } from "../services/gmailEvents.js";
 
 export async function registerEventoRoutes(app: FastifyInstance) {
   // Minimal API para empezar a reemplazar data fake.
@@ -95,6 +96,72 @@ export async function registerEventoRoutes(app: FastifyInstance) {
         at: m.internalAt ?? m.createdAt,
       })),
     };
+  });
+
+  // Server-Sent Events stream: emits when relevant Gmail messages are ingested.
+  app.get("/eventos/:id/gmail-stream", async (req, reply) => {
+    // EventSource can't send Authorization headers, so we accept token in query too.
+    const q = req.query as any;
+    const token = typeof q?.token === "string" ? q.token : undefined;
+    try {
+      // @fastify/jwt supports passing token explicitly.
+      await (req as any).jwtVerify(token ? { token } : undefined);
+    } catch {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+
+    const id = (req.params as { id: string }).id;
+    const ev = await prisma.evento.findUnique({ where: { id } });
+    if (!ev || ev.deletedAt) return reply.code(404).send({ error: "not_found" });
+
+    const empresaContactos = await prisma.contacto.findMany({
+      where: { empresaId: ev.empresaId, deletedAt: null, email: { not: null } },
+      select: { email: true },
+    });
+
+    const provContactos = await prisma.proveedorContacto.findMany({
+      where: {
+        deletedAt: null,
+        email: { not: null },
+        proveedor: { pedidos: { some: { eventoId: ev.id, deletedAt: null } } },
+      },
+      select: { email: true },
+      take: 200,
+    });
+
+    const emails = Array.from(
+      new Set(
+        [...empresaContactos, ...provContactos]
+          .map((x) => (x.email ?? "").trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    );
+    const evRef = (ev.contactoRef ?? "").trim().toLowerCase();
+    if (evRef && evRef.includes("@")) emails.push(evRef);
+    if (!emails.length) return reply.code(200).send({ ok: true, note: "no_emails" });
+
+    reply.raw.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+    });
+    reply.raw.write(`event: ready\ndata: ${JSON.stringify({ ok: true })}\n\n`);
+
+    const sub = { send: (ev: any) => reply.raw.write(`event: gmail\ndata: ${JSON.stringify(ev)}\n\n`) };
+    const unsubscribe = subscribeEmails(emails, sub);
+    const ping = setInterval(() => {
+      try {
+        reply.raw.write(`event: ping\ndata: {}\n\n`);
+      } catch {
+        // ignore
+      }
+    }, 25_000);
+
+    req.raw.on("close", () => {
+      clearInterval(ping);
+      unsubscribe();
+    });
   });
 
   app.post("/eventos", { preHandler: [jwtVerifyGuard, requireWriteAccess()] }, async (req, reply) => {
