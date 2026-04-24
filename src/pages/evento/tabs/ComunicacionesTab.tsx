@@ -48,15 +48,18 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
   const [gmail, setGmail] = useState<GmailComm[]>([]);
   const [loadingGmail, setLoadingGmail] = useState(false);
   const [gmailOpen, setGmailOpen] = useState<GmailComm | null>(null);
+  const [gmailTick, setGmailTick] = useState(0);
 
   useEffect(() => {
     let alive = true;
-    async function refresh() {
+    async function refresh(): Promise<GmailComm[]> {
       setLoadingGmail(true);
       try {
         const res = await gate.run(async () => await apiEventoGmailComms(eventoId));
         if (!alive) return;
-        setGmail(res?.messages ?? []);
+        const next = (res?.messages ?? []) as GmailComm[];
+        setGmail(next);
+        return next;
       } finally {
         if (alive) setLoadingGmail(false);
       }
@@ -65,19 +68,45 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
     // Initial fetch on tab open.
     void refresh();
 
-    // “Near realtime” refresh when user is looking at Gmail/Todos.
+    // Low-request strategy: backoff polling only while user is looking at Gmail/Todos,
+    // and pause when tab is not visible.
     const shouldPoll = filter === "Gmail" || filter === "Todos";
-    if (!shouldPoll) return () => { alive = false; };
+    if (!shouldPoll) return () => {
+      alive = false;
+    };
 
-    const t = setInterval(() => {
-      void refresh();
-    }, 12_000);
+    let delayMs = 12_000;
+    let lastTopKey = "";
+    let t: any = null;
+    function schedule() {
+      if (!alive) return;
+      if (document.visibilityState !== "visible") {
+        // Check later; don't spam while hidden.
+        t = setTimeout(schedule, 60_000);
+        return;
+      }
+      t = setTimeout(async () => {
+        const next = await refresh();
+        const top = next?.[0];
+        const topKey = top ? `${top.id}:${top.at}:${top.subject ?? ""}:${top.snippet ?? ""}` : "";
+        const changed = topKey && topKey !== lastTopKey;
+        if (changed) {
+          lastTopKey = topKey;
+          delayMs = 12_000; // stay responsive while messages are flowing
+        } else {
+          // backoff up to 2 minutes
+          delayMs = Math.min(120_000, delayMs === 12_000 ? 30_000 : delayMs === 30_000 ? 60_000 : 120_000);
+        }
+        schedule();
+      }, delayMs);
+    }
+    schedule();
 
     return () => {
       alive = false;
-      clearInterval(t);
+      if (t) clearTimeout(t);
     };
-  }, [eventoId, filter, gate]);
+  }, [eventoId, filter, gate, gmailTick]);
 
   const filtered = useMemo(() => {
     if (filter === "Todos") return comms;
@@ -121,7 +150,26 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
         <div style={{ marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
             <div style={{ fontSize: 12, fontWeight: 900 }}>Gmail (auto)</div>
-            <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{loadingGmail ? "actualizando…" : ""}</div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{loadingGmail ? "actualizando…" : ""}</div>
+              <button
+                type="button"
+                onClick={() => setGmailTick((x) => x + 1)}
+                style={{
+                  border: "0.5px solid var(--color-border-tertiary)",
+                  background: "transparent",
+                  color: "var(--color-text-secondary)",
+                  borderRadius: 10,
+                  padding: "6px 10px",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 800,
+                }}
+                title="Forzar refresh"
+              >
+                Actualizar
+              </button>
+            </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {gmail.map((m) => {
