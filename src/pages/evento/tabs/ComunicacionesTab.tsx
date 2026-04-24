@@ -51,6 +51,30 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
   const [gmailOpen, setGmailOpen] = useState<GmailComm | null>(null);
   const [gmailTick, setGmailTick] = useState(0);
   const esRef = useRef<EventSource | null>(null);
+  const [openThread, setOpenThread] = useState<string | null>(null);
+
+  function cleanEmailText(x: string) {
+    const raw = String(x ?? "").replace(/\r\n/g, "\n");
+    const lines = raw.split("\n");
+    const out: string[] = [];
+    for (const ln of lines) {
+      const s = ln.trimEnd();
+      const t = s.trim();
+      if (!t) {
+        // keep a single blank line max
+        if (out.length && out[out.length - 1] !== "") out.push("");
+        continue;
+      }
+      if (t.startsWith(">")) continue; // quoted line
+      if (/^-----\s*original message\s*-----$/i.test(t)) break;
+      if (/^-----\s*mensaje original\s*-----$/i.test(t)) break;
+      if (/^on .+wrote:$/i.test(t)) break;
+      if (/^el .+escribi[oó]:$/i.test(t)) break;
+      if (/^from:\s/i.test(t) && out.length > 3) break; // header block of older message
+      out.push(s);
+    }
+    return out.join("\n").trim();
+  }
 
   useEffect(() => {
     let alive = true;
@@ -194,71 +218,136 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
               </button>
             </div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {gmail.map((m) => {
-              const mailbox = (m.mailbox ?? "").trim().toLowerCase();
-              const from = (m.fromEmail ?? "").trim().toLowerCase();
-              const isOut = !!mailbox && !!from && mailbox === from;
-              const bg = isOut ? "var(--color-primary-subtle)" : "var(--color-background-secondary)";
-              const head = isOut ? `vos` : (m.fromEmail ?? "—");
-              const to = Array.isArray(m.toEmails) ? m.toEmails.filter(Boolean) : [];
-              const subject = (m.subject ?? "").trim() || "(sin asunto)";
-              const snippet = (m.snippet ?? "").trim() || "(sin contenido)";
+          {(() => {
+            const sorted = [...gmail].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+            const threads = new Map<string, GmailComm[]>();
+            for (const m of sorted) {
+              const key = (m.threadId ?? "").trim() || m.id;
+              const list = threads.get(key) ?? [];
+              list.push(m);
+              threads.set(key, list);
+            }
+            const threadRows = Array.from(threads.entries()).map(([k, list]) => {
+              const byTimeAsc = [...list].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+              const last = byTimeAsc[byTimeAsc.length - 1]!;
+              return { threadKey: k, list: byTimeAsc, last };
+            });
+            threadRows.sort((a, b) => new Date(b.last.at).getTime() - new Date(a.last.at).getTime());
+
+            if (!threadRows.length) {
               return (
-                <div
-                  key={m.id}
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    justifyContent: isOut ? "flex-end" : "flex-start",
-                  }}
-                >
-                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexDirection: isOut ? "row-reverse" : "row", maxWidth: "92%" }}>
-                    {avatar(head, isOut ? "rgba(234,101,54,0.18)" : "rgba(59,130,246,0.18)", isOut ? "#EA6536" : "#3B82F6")}
-                    <button
-                      type="button"
-                      onClick={() => setGmailOpen(m)}
-                      style={{
-                        maxWidth: 720,
-                        width: "min(720px, 100%)",
-                        textAlign: "left",
-                        padding: "10px 13px",
-                        borderRadius: 12,
-                        border: "0.5px solid var(--color-border-tertiary)",
-                        background: bg,
-                        cursor: "pointer",
-                      }}
-                      title="Ver detalles"
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
-                        <div style={{ fontSize: 11, fontWeight: 900 }}>
-                          {head}
-                          <span style={{ fontWeight: 700, color: "var(--color-text-secondary)" }}>
-                            {" "}
-                            {isOut ? "→" : "·"} {isOut ? (to.join(", ") || "—") : (m.mailbox ?? "—")}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 10, color: "var(--color-text-secondary)", flexShrink: 0 }}>
-                          {new Date(m.at).toLocaleString()}
-                        </div>
-                      </div>
-                      <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {subject}
-                      </div>
-                      <div style={{ fontSize: 12, lineHeight: 1.45, color: "var(--color-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2 as any, WebkitBoxOrient: "vertical" as any }}>
-                        {snippet}
-                      </div>
-                    </button>
-                  </div>
+                <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+                  No hay mensajes Gmail asociados (o falta sync/mailboxes/contactos con email).
                 </div>
               );
-            })}
-            {!gmail.length ? (
-              <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
-                No hay mensajes Gmail asociados (o falta sync/mailboxes/contactos con email).
+            }
+
+            return (
+              <div style={{ display: "grid", gap: 10 }}>
+                {threadRows.map((t) => {
+                  const last = t.last;
+                  const subject = (last.subject ?? "").trim() || "(sin asunto)";
+                  const preview = cleanEmailText(last.bodyText ?? last.snippet ?? "") || "(sin contenido)";
+                  const isOpen = openThread === t.threadKey;
+                  return (
+                    <div
+                      key={t.threadKey}
+                      style={{
+                        border: "0.5px solid var(--color-border-tertiary)",
+                        borderRadius: 12,
+                        overflow: "hidden",
+                        background: "var(--color-background-primary)",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setOpenThread((cur) => (cur === t.threadKey ? null : t.threadKey))}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          border: "none",
+                          background: "var(--color-background-secondary)",
+                          padding: "10px 12px",
+                          cursor: "pointer",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 10,
+                          alignItems: "baseline",
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {subject}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--color-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
+                            {preview}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--color-text-secondary)", flexShrink: 0 }}>
+                          {new Date(last.at).toLocaleString()} {isOpen ? "▴" : "▾"}
+                        </div>
+                      </button>
+
+                      {isOpen ? (
+                        <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                          {t.list.slice(-6).map((m) => {
+                            const mailbox = (m.mailbox ?? "").trim().toLowerCase();
+                            const from = (m.fromEmail ?? "").trim().toLowerCase();
+                            const isOut = !!mailbox && !!from && mailbox === from;
+                            const bg = isOut ? "var(--color-primary-subtle)" : "var(--color-background-secondary)";
+                            const head = isOut ? "vos" : (m.fromEmail ?? "—");
+                            const to = Array.isArray(m.toEmails) ? m.toEmails.filter(Boolean) : [];
+                            const body = cleanEmailText(m.bodyText ?? m.snippet ?? "") || "(sin contenido)";
+                            return (
+                              <div key={m.id} style={{ width: "100%", display: "flex", justifyContent: isOut ? "flex-end" : "flex-start" }}>
+                                <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexDirection: isOut ? "row-reverse" : "row", maxWidth: "92%" }}>
+                                  {avatar(head, isOut ? "rgba(234,101,54,0.18)" : "rgba(59,130,246,0.18)", isOut ? "#EA6536" : "#3B82F6")}
+                                  <button
+                                    type="button"
+                                    onClick={() => setGmailOpen(m)}
+                                    style={{
+                                      maxWidth: 720,
+                                      width: "min(720px, 100%)",
+                                      textAlign: "left",
+                                      padding: "10px 13px",
+                                      borderRadius: 12,
+                                      border: "0.5px solid var(--color-border-tertiary)",
+                                      background: bg,
+                                      cursor: "pointer",
+                                    }}
+                                    title="Ver detalles"
+                                  >
+                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
+                                      <div style={{ fontSize: 11, fontWeight: 900 }}>
+                                        {head}
+                                        <span style={{ fontWeight: 700, color: "var(--color-text-secondary)" }}>
+                                          {" "}
+                                          {isOut ? "→" : "·"} {isOut ? (to.join(", ") || "—") : (m.mailbox ?? "—")}
+                                        </span>
+                                      </div>
+                                      <div style={{ fontSize: 10, color: "var(--color-text-secondary)", flexShrink: 0 }}>
+                                        {new Date(m.at).toLocaleString()}
+                                      </div>
+                                    </div>
+                                    <div style={{ fontSize: 12, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{body}</div>
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {t.list.length > 6 ? (
+                            <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>
+                              Mostrando últimos 6 de {t.list.length}. (El resto se oculta para evitar “mamushka”.)
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
-            ) : null}
-          </div>
+            );
+          })()}
         </div>
       ) : null}
 

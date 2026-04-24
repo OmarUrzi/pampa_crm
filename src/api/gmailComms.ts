@@ -2,6 +2,7 @@ import { apiFetch } from "./client";
 
 export type GmailComm = {
   id: string;
+  threadId?: string | null;
   mailbox: string;
   fromEmail: string | null;
   toEmails: string[];

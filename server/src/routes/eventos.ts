@@ -87,6 +87,7 @@ export async function registerEventoRoutes(app: FastifyInstance) {
     return {
       messages: messages.map((m) => ({
         id: m.id,
+        threadId: (m as any).threadId ?? null,
         mailbox: m.mailbox.email,
         fromEmail: m.fromEmail,
         toEmails: m.toEmails ? (JSON.parse(m.toEmails) as string[]) : [],
