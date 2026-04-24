@@ -59,6 +59,7 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
     const raw = String(x ?? "").replace(/\r\n/g, "\n");
     const lines = raw.split("\n");
     const out: string[] = [];
+    const meaningfulCount = () => out.filter((l) => l.trim().length > 0).length;
     for (let i = 0; i < lines.length; i++) {
       const ln = lines[i] ?? "";
       const s = ln.trimEnd();
@@ -71,8 +72,15 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
       if (t.startsWith(">")) continue; // quoted line
       // Stop when we hit the quoted/reply “mamushka”.
       if (/^-----\s*(original message|mensaje original|forwarded message|mensaje reenviado)\s*-----$/i.test(t)) break;
-      if (/^from:\s/i.test(t) && out.length > 3) break; // header block of older message
-      if (/^de:\s/i.test(t) && out.length > 3) break; // spanish header block
+      // Outlook/Hotmail often injects a header block (De/Enviado/Para/Asunto) before the quoted message.
+      // If we see that and we haven't captured any meaningful content yet, stop to avoid the “mamushka”.
+      if (/^(from|de):\s/i.test(t) && meaningfulCount() === 0) break;
+      if (/^(sent|enviado):\s/i.test(t) && meaningfulCount() === 0) break;
+      if (/^(to|para):\s/i.test(t) && meaningfulCount() === 0) break;
+      if (/^(subject|asunto):\s/i.test(t) && meaningfulCount() === 0) break;
+      // If we've already captured some content, a header block indicates the start of the quoted email.
+      if (/^(from|de):\s/i.test(t) && meaningfulCount() > 0) break;
+      if (/^(sent|enviado):\s/i.test(t) && meaningfulCount() > 0) break;
       if (/^on\s.+$/i.test(t) && /wrote:$/i.test((lines[i + 1] ?? "").trim())) break; // split “On …” + “wrote:”
       if (/wrote:\s*$/i.test(t)) break;
       if (/^on .+wrote:\s*$/i.test(t)) break;
