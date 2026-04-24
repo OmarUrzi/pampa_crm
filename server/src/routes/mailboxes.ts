@@ -273,7 +273,11 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
       const c = await gmailClientForMailbox(id);
       if (!c) return reply.code(404).send({ error: "not_found" });
 
-      const list = await c.gmail.users.messages.list({ userId: "me", maxResults: 25, q: "newer_than:30d" });
+      const list = await c.gmail.users.messages.list({
+        userId: "me",
+        maxResults: 25,
+        q: "newer_than:30d (in:inbox OR in:sent)",
+      });
       const ids = (list.data.messages ?? []).map((m: any) => m.id).filter(Boolean) as string[];
 
       const relevant = await loadRelevantEmailsSet();
@@ -322,7 +326,7 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
         h = await c.gmail.users.history.list({
           userId: "me",
           startHistoryId,
-          historyTypes: ["messageAdded"],
+          historyTypes: ["messageAdded", "labelAdded"],
           maxResults: 50,
         });
       } catch (e: any) {
@@ -331,7 +335,11 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
         const code = Number(e?.code ?? 0);
         const isHistoryInvalid = code === 404 || /startHistoryId/i.test(msg) || /history/i.test(msg);
         if (!isHistoryInvalid) throw e;
-        const list = await c.gmail.users.messages.list({ userId: "me", maxResults: 25, q: "newer_than:10d" });
+        const list = await c.gmail.users.messages.list({
+          userId: "me",
+          maxResults: 25,
+          q: "newer_than:10d (in:inbox OR in:sent)",
+        });
         const ids = (list.data.messages ?? []).map((m: any) => m.id).filter(Boolean) as string[];
         for (const id of ids) {
           await ingestMessage(c.gmail, mailbox.id, id, relevant);
@@ -348,6 +356,22 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
       for (const it of h.data.history ?? []) {
         for (const m of it.messagesAdded ?? []) {
           const id = m.message?.id;
+          if (id) added.add(id);
+        }
+        for (const m of it.labelsAdded ?? []) {
+          const id = m.message?.id;
+          if (id) added.add(id);
+        }
+      }
+      // If history yields no message ids (happens for some sent flows), do a tiny inbox/sent refresh.
+      if (!added.size) {
+        const list = await c.gmail.users.messages.list({
+          userId: "me",
+          maxResults: 10,
+          q: "newer_than:2d (in:inbox OR in:sent)",
+        });
+        for (const m of list.data.messages ?? []) {
+          const id = (m as any)?.id;
           if (id) added.add(id);
         }
       }
