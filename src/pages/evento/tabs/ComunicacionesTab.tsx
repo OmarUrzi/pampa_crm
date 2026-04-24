@@ -44,19 +44,43 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
   const canEdit = useCanEdit();
   const gate = useAuthGate();
 
-  const [filter, setFilter] = useState<"Todos" | EventoCommsTipo | "Gmail">("Todos");
+  const [filter, setFilter] = useState<"Todos" | Exclude<EventoCommsTipo, "Mail"> | "Gmail">("Todos");
   const [gmail, setGmail] = useState<GmailComm[]>([]);
+  const [loadingGmail, setLoadingGmail] = useState(false);
 
   useEffect(() => {
-    void gate.run(async () => {
-      const res = await apiEventoGmailComms(eventoId);
-      setGmail(res?.messages ?? []);
-    });
-  }, [eventoId, gate]);
+    let alive = true;
+    async function refresh() {
+      setLoadingGmail(true);
+      try {
+        const res = await gate.run(async () => await apiEventoGmailComms(eventoId));
+        if (!alive) return;
+        setGmail(res?.messages ?? []);
+      } finally {
+        if (alive) setLoadingGmail(false);
+      }
+    }
+
+    // Initial fetch on tab open.
+    void refresh();
+
+    // “Near realtime” refresh when user is looking at Gmail/Todos.
+    const shouldPoll = filter === "Gmail" || filter === "Todos";
+    if (!shouldPoll) return () => { alive = false; };
+
+    const t = setInterval(() => {
+      void refresh();
+    }, 12_000);
+
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [eventoId, filter, gate]);
 
   const filtered = useMemo(() => {
     if (filter === "Todos") return comms;
-    if (filter === "Gmail") return comms;
+    if (filter === "Gmail") return [];
     return comms.filter((c) => c.tipo === filter);
   }, [comms, filter]);
 
@@ -80,9 +104,6 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
           <Chip type="button" active={filter === "Todos"} onClick={() => setFilter("Todos")}>
             Todos
           </Chip>
-          <Chip type="button" active={filter === "Mail"} onClick={() => setFilter("Mail")}>
-            Mail
-          </Chip>
           <Chip type="button" active={filter === "WhatsApp"} onClick={() => setFilter("WhatsApp")}>
             WhatsApp
           </Chip>
@@ -97,7 +118,10 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
 
       {filter === "Gmail" || filter === "Todos" ? (
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 8 }}>Gmail (auto)</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 900 }}>Gmail (auto)</div>
+            <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{loadingGmail ? "actualizando…" : ""}</div>
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {gmail.map((m) => (
               <div
