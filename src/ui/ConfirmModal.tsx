@@ -10,6 +10,7 @@ export function ConfirmModal({
   onConfirm,
   onClose,
   busy,
+  zIndex = 120,
 }: {
   title?: string;
   message?: string;
@@ -19,11 +20,12 @@ export function ConfirmModal({
   busy?: boolean;
   onConfirm: () => void | Promise<void>;
   onClose: () => void;
+  zIndex?: number;
 }) {
   return (
     <Modal
       title={title}
-      zIndex={120}
+      zIndex={zIndex}
       onClose={() => {
         if (busy) return;
         onClose();

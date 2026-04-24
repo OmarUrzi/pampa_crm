@@ -6,12 +6,15 @@ export function Modal({
   onClose,
   footer,
   zIndex,
+  maxWidth,
 }: {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
   onClose: () => void;
   zIndex?: number;
+  /** Inner panel max width, e.g. "min(920px, 100%)" */
+  maxWidth?: string;
 }) {
   return (
     <div
@@ -33,7 +36,8 @@ export function Modal({
     >
       <div
         style={{
-          width: "min(820px, 100%)",
+          width: maxWidth ?? "min(820px, 100%)",
+          maxWidth: "100%",
           background: "var(--color-background-primary)",
           borderRadius: 16,
           border: "0.5px solid var(--color-border-tertiary)",
