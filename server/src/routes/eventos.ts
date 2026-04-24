@@ -99,6 +99,68 @@ export async function registerEventoRoutes(app: FastifyInstance) {
     };
   });
 
+  // Fetch full thread for a given threadId (still filtered to event-relevant emails).
+  app.get("/eventos/:id/gmail-thread", { preHandler: jwtVerifyGuard }, async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const threadId = String((req.query as any)?.threadId ?? "").trim();
+    if (!threadId) return reply.code(400).send({ error: "threadId_required" });
+
+    const ev = await prisma.evento.findUnique({ where: { id } });
+    if (!ev || ev.deletedAt) return reply.code(404).send({ error: "not_found" });
+
+    const empresaContactos = await prisma.contacto.findMany({
+      where: { empresaId: ev.empresaId, deletedAt: null, email: { not: null } },
+      select: { email: true },
+    });
+
+    const provContactos = await prisma.proveedorContacto.findMany({
+      where: {
+        deletedAt: null,
+        email: { not: null },
+        proveedor: { pedidos: { some: { eventoId: ev.id, deletedAt: null } } },
+      },
+      select: { email: true },
+      take: 200,
+    });
+
+    const emails = Array.from(
+      new Set(
+        [...empresaContactos, ...provContactos]
+          .map((x) => (x.email ?? "").trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    );
+    const evRef = (ev.contactoRef ?? "").trim().toLowerCase();
+    if (evRef && evRef.includes("@")) emails.push(evRef);
+    if (!emails.length) return { messages: [] };
+
+    const or = [
+      { fromEmail: { in: emails } },
+      ...emails.map((e) => ({ toEmails: { contains: e } })),
+    ] as any[];
+
+    const messages = await prisma.gmailMessage.findMany({
+      where: { threadId, OR: or },
+      orderBy: [{ internalAt: "asc" }, { createdAt: "asc" }],
+      take: 80,
+      include: { mailbox: { select: { email: true } } },
+    });
+
+    return {
+      messages: messages.map((m) => ({
+        id: m.id,
+        threadId: (m as any).threadId ?? null,
+        mailbox: m.mailbox.email,
+        fromEmail: m.fromEmail,
+        toEmails: m.toEmails ? (JSON.parse(m.toEmails) as string[]) : [],
+        subject: m.subject,
+        snippet: m.snippet,
+        bodyText: (m as any).bodyText ?? null,
+        at: m.internalAt ?? m.createdAt,
+      })),
+    };
+  });
+
   // Server-Sent Events stream: emits when relevant Gmail messages are ingested.
   app.get("/eventos/:id/gmail-stream", async (req, reply) => {
     // EventSource can't send Authorization headers, so we accept token in query too.

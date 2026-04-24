@@ -6,7 +6,7 @@ import { apiCreateComm } from "../../../api/comms";
 import { refreshEventoDetailIntoStore } from "../../../api/hydrateEventoDetail";
 import { useCanEdit } from "../../../auth/perms";
 import { useAuthGate } from "../../../auth/useAuthGate";
-import { apiEventoGmailComms, type GmailComm } from "../../../api/gmailComms";
+import { apiEventoGmailComms, apiEventoGmailThread, type GmailComm } from "../../../api/gmailComms";
 import { API_BASE, getToken } from "../../../api/client";
 
 function avatar(name: string, bg: string, fg: string) {
@@ -52,6 +52,8 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
   const [gmailTick, setGmailTick] = useState(0);
   const esRef = useRef<EventSource | null>(null);
   const [openThread, setOpenThread] = useState<string | null>(null);
+  const [threadAll, setThreadAll] = useState<GmailComm[] | null>(null);
+  const [threadLoading, setThreadLoading] = useState(false);
 
   function cleanEmailText(x: string) {
     const raw = String(x ?? "").replace(/\r\n/g, "\n");
@@ -404,9 +406,107 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
               <div><strong>Para:</strong> {(gmailOpen.toEmails ?? []).join(", ") || "—"}</div>
               <div><strong>Fecha:</strong> {new Date(gmailOpen.at).toLocaleString()}</div>
             </div>
+
+            {gmailOpen.threadId ? (
+              <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      if (!gmailOpen.threadId) return;
+                      setThreadLoading(true);
+                      try {
+                        const res = await gate.run(async () => await apiEventoGmailThread(eventoId, gmailOpen.threadId!));
+                        const list = (res?.messages ?? []) as GmailComm[];
+                        setThreadAll(list);
+                      } finally {
+                        setThreadLoading(false);
+                      }
+                    })();
+                  }}
+                  disabled={threadLoading}
+                  style={{
+                    border: "0.5px solid var(--color-border-tertiary)",
+                    background: "transparent",
+                    color: "var(--color-text-secondary)",
+                    borderRadius: 10,
+                    padding: "6px 10px",
+                    cursor: threadLoading ? "not-allowed" : "pointer",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    opacity: threadLoading ? 0.6 : 1,
+                  }}
+                >
+                  {threadLoading ? "Cargando hilo…" : "Ver hilo completo"}
+                </button>
+                {threadAll ? (
+                  <button
+                    type="button"
+                    onClick={() => setThreadAll(null)}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      color: "var(--color-text-secondary)",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      textDecoration: "underline",
+                    }}
+                  >
+                    Ocultar
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
             <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.55 }}>
-              {(gmailOpen.bodyText ?? gmailOpen.snippet ?? "").trim() || "(sin contenido)"}
+              {cleanEmailText(gmailOpen.bodyText ?? gmailOpen.snippet ?? "") || "(sin contenido)"}
             </div>
+
+            {threadAll ? (
+              <div
+                style={{
+                  marginTop: 12,
+                  borderTop: "0.5px solid var(--color-border-tertiary)",
+                  paddingTop: 12,
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 8 }}>Hilo completo</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: "50vh", overflow: "auto" }}>
+                  {threadAll.map((m) => {
+                    const mailbox = (m.mailbox ?? "").trim().toLowerCase();
+                    const from = (m.fromEmail ?? "").trim().toLowerCase();
+                    const isOut = !!mailbox && !!from && mailbox === from;
+                    const bg = isOut ? "var(--color-primary-subtle)" : "var(--color-background-secondary)";
+                    const head = isOut ? "vos" : (m.fromEmail ?? "—");
+                    const to = Array.isArray(m.toEmails) ? m.toEmails.filter(Boolean) : [];
+                    const body = cleanEmailText(m.bodyText ?? m.snippet ?? "") || "(sin contenido)";
+                    const subj = (m.subject ?? "").trim();
+                    return (
+                      <div key={m.id} style={{ width: "100%", display: "flex", justifyContent: isOut ? "flex-end" : "flex-start" }}>
+                        <div style={{ maxWidth: "92%", border: "0.5px solid var(--color-border-tertiary)", background: bg, borderRadius: 12, padding: "10px 12px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
+                            <div style={{ fontSize: 11, fontWeight: 900 }}>
+                              {head}{" "}
+                              <span style={{ fontWeight: 700, color: "var(--color-text-secondary)" }}>
+                                {isOut ? "→" : "·"} {isOut ? (to.join(", ") || "—") : (m.mailbox ?? "—")}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 10, color: "var(--color-text-secondary)", flexShrink: 0 }}>
+                              {new Date(m.at).toLocaleString()}
+                            </div>
+                          </div>
+                          {subj ? (
+                            <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 6 }}>{subj}</div>
+                          ) : null}
+                          <div style={{ fontSize: 12, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{body}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}

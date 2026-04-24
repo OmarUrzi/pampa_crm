@@ -16,3 +16,8 @@ export async function apiEventoGmailComms(eventoId: string) {
   return await apiFetch<{ messages: GmailComm[] }>(`/eventos/${eventoId}/gmail-comms`);
 }
 
+export async function apiEventoGmailThread(eventoId: string, threadId: string) {
+  const q = encodeURIComponent(threadId);
+  return await apiFetch<{ messages: GmailComm[] }>(`/eventos/${eventoId}/gmail-thread?threadId=${q}`);
+}
+
