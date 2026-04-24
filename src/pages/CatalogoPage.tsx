@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { Button, Chip, Pill } from "../ui/ui";
 import { useAppStore } from "../state/useAppStore";
 import { CatalogoActividadFormModal } from "../ui/CatalogoActividadFormModal";
-import { apiFetch } from "../api/client";
 import { apiListCatalogo } from "../api/catalogo";
 import { useCanEdit } from "../auth/perms";
 import { useAuthGate } from "../auth/useAuthGate";
@@ -65,7 +64,7 @@ export function CatalogoPage() {
                 categoria: a.categoria,
                 precioUsd: a.precioUsd ?? 0,
                 proveedorSugerido: a.proveedorTxt ?? "—",
-                fotos: a.fotos.map((f) => f.url),
+                fotos: a.fotos.map((f) => f.url ?? f.blobUrl).filter(Boolean) as string[],
               })),
             );
           }}
@@ -86,7 +85,7 @@ export function CatalogoPage() {
                 categoria: a.categoria,
                 precioUsd: a.precioUsd ?? 0,
                 proveedorSugerido: a.proveedorTxt ?? "—",
-                fotos: a.fotos.map((f) => f.url),
+                fotos: a.fotos.map((f) => f.url ?? f.blobUrl).filter(Boolean) as string[],
               })),
             );
           }}
@@ -104,13 +103,15 @@ export function CatalogoPage() {
               setSlidesBusy(true);
               try {
                 await gate.run(async () => {
-                  const res = await apiFetch<{ ok: boolean; url: string }>("/slides/generate", {
+                  const res = await fetch("/slides/generate", {
                     method: "POST",
+                    headers: { "content-type": "application/json" },
                     body: JSON.stringify({
                       prompt:
-                        "Generá slides de catálogo de actividades (outdoor, gastronomía y team building) con fotos cuando existan URLs.",
+                        "Armá una presentación del catálogo de actividades (outdoor, gastronomía y team building). Incluí fotos cuando existan.",
+                      provider: "anthropic",
                     }),
-                  });
+                  }).then((r) => r.json());
                   if (res?.url) window.open(res.url, "_blank", "noopener,noreferrer");
                 });
               } finally {

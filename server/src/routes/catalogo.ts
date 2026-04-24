@@ -6,6 +6,23 @@ import { requireWriteAccess } from "../auth/roleGuards.js";
 import { auditLog } from "../audit.js";
 
 export async function registerCatalogoRoutes(app: FastifyInstance) {
+  app.get("/catalogo/fotos/:fotoId/blob", async (req, reply) => {
+    const fotoId = (req.params as { fotoId: string }).fotoId;
+    const foto = await prisma.actividadFoto.findUnique({
+      where: { id: fotoId },
+      select: { id: true, bytes: true, mime: true, filename: true, deletedAt: true },
+    });
+    if (!foto || foto.deletedAt) return reply.code(404).send({ error: "not_found" });
+    if (!foto.bytes) return reply.code(404).send({ error: "no_bytes" });
+
+    const mime = (foto.mime ?? "application/octet-stream").trim() || "application/octet-stream";
+    reply.header("content-type", mime);
+    // Cache lightly; catalog images rarely change.
+    reply.header("cache-control", "public, max-age=3600");
+    if (foto.filename) reply.header("content-disposition", `inline; filename="${foto.filename.replace(/"/g, "")}"`);
+    return reply.send(Buffer.from(foto.bytes));
+  });
+
   app.get("/catalogo", async () => {
     const actividades = await prisma.actividadCatalogo.findMany({
       where: { deletedAt: null },
@@ -146,11 +163,59 @@ export async function registerCatalogoRoutes(app: FastifyInstance) {
   // Fotos
   app.post("/catalogo/:id/fotos", { preHandler: [jwtVerifyGuard, requireWriteAccess()] }, async (req, reply) => {
     const actividadId = (req.params as { id: string }).id;
-    const schema = z.object({ url: z.string().min(1), caption: z.string().optional() });
-    const body = schema.parse(req.body);
+    // Supports JSON (url/caption) and multipart upload (file + caption).
+    const ct = String((req.headers as any)?.["content-type"] ?? "");
+    const isMultipart = ct.toLowerCase().includes("multipart/form-data");
 
     const act = await prisma.actividadCatalogo.findUnique({ where: { id: actividadId } });
     if (!act || act.deletedAt) return reply.code(404).send({ error: "not_found" });
+
+    if (isMultipart) {
+      const parts = (req as any).parts?.();
+      if (!parts) return reply.code(400).send({ error: "multipart_not_enabled" });
+
+      let caption: string | null = null;
+      let fileName: string | null = null;
+      let mime: string | null = null;
+      let bytes: Buffer | null = null;
+
+      for await (const p of parts) {
+        if (p.type === "file") {
+          fileName = p.filename ?? null;
+          mime = p.mimetype ?? null;
+          bytes = await p.toBuffer();
+        } else {
+          if (p.fieldname === "caption") caption = String(p.value ?? "").trim() || null;
+        }
+      }
+      if (!bytes) return reply.code(400).send({ error: "file_required" });
+
+      const foto = await prisma.actividadFoto.create({
+        data: {
+          actividadId,
+          url: null,
+          caption,
+          bytes: new Uint8Array(bytes),
+          mime,
+          filename: fileName,
+          sizeBytes: bytes.length,
+        },
+      });
+
+      await auditLog({
+        req,
+        action: "create",
+        entity: "ActividadFoto",
+        entityId: foto.id,
+        summary: `Foto subida a actividad: ${act.nombre}`,
+        data: { caption, fileName, mime, size: bytes.length },
+      });
+
+      return reply.code(201).send({ foto });
+    }
+
+    const schema = z.object({ url: z.string().min(1), caption: z.string().optional() });
+    const body = schema.parse(req.body);
 
     const foto = await prisma.actividadFoto.create({
       data: { actividadId, url: body.url, caption: body.caption ?? null },
@@ -170,7 +235,7 @@ export async function registerCatalogoRoutes(app: FastifyInstance) {
 
   app.patch("/catalogo/:id/fotos/:fotoId", { preHandler: [jwtVerifyGuard, requireWriteAccess()] }, async (req, reply) => {
     const { id: actividadId, fotoId } = req.params as { id: string; fotoId: string };
-    const schema = z.object({ url: z.string().min(1).optional(), caption: z.string().nullable().optional() });
+    const schema = z.object({ url: z.string().min(1).nullable().optional(), caption: z.string().nullable().optional() });
     const body = schema.parse(req.body);
 
     const act = await prisma.actividadCatalogo.findUnique({ where: { id: actividadId } });

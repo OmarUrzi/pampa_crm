@@ -345,6 +345,22 @@ model AiPromptLog {
   @@index([eventoId])
 }
 
+model SlideDeck {
+  id        String   @id @default(cuid())
+  eventoId  String?
+  source    String   @default("catalogo")
+  title     String?
+  prompt    String
+  provider  String?
+  deckJson  Json
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([eventoId])
+  @@index([source])
+  @@index([createdAt])
+}
+
 model ActividadCatalogo {
   id        String   @id @default(cuid())
   nombre    String
@@ -377,7 +393,11 @@ model ActividadTemporada {
 model ActividadFoto {
   id          String @id @default(cuid())
   actividadId String
-  url         String
+  url         String?
+  bytes       Bytes?
+  mime        String?
+  filename    String?
+  sizeBytes   Int?
   caption     String?
   deletedAt   DateTime?
   createdAt   DateTime @default(now())

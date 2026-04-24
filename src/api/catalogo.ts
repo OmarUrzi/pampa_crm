@@ -2,8 +2,9 @@ import { apiFetch } from "./client";
 
 export type ApiActividadFoto = {
   id: string;
-  url: string;
+  url: string | null;
   caption: string | null;
+  hasBytes?: boolean;
 };
 
 export type ApiActividad = {
@@ -54,5 +55,15 @@ export async function apiPatchActividad(
 
 export async function apiDeleteActividad(id: string) {
   return await apiFetch<{ ok: boolean }>(`/catalogo/${id}`, { method: "DELETE" });
+}
+
+export async function apiUploadActividadFoto(input: { actividadId: string; file: File; caption?: string }) {
+  const fd = new FormData();
+  fd.append("file", input.file, input.file.name);
+  if (input.caption) fd.append("caption", input.caption);
+  return await apiFetch<{ foto: ApiActividadFoto }>(`/catalogo/${input.actividadId}/fotos`, {
+    method: "POST",
+    body: fd,
+  });
 }
 
