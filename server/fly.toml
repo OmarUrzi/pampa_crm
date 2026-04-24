@@ -4,6 +4,10 @@ primary_region = "gru"
 [build]
   dockerfile = "Dockerfile"
 
+# Aplica migraciones Prisma en cada deploy (p. ej. nuevos valores de enum como AiProvider).
+[deploy]
+  release_command = "npx prisma migrate deploy"
+
 [processes]
   app = "node dist/index.js"
 

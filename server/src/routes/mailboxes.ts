@@ -24,7 +24,7 @@ async function gmailClientForMailbox(mailboxId: string) {
 }
 
 async function loadRelevantEmailsSet() {
-  const [cts, pcs] = await Promise.all([
+  const [cts, pcs, evRefs] = await Promise.all([
     prisma.contacto.findMany({
       where: { deletedAt: null, email: { not: null } },
       select: { email: true },
@@ -35,6 +35,11 @@ async function loadRelevantEmailsSet() {
       select: { email: true },
       take: 10_000,
     }),
+    prisma.evento.findMany({
+      where: { deletedAt: null, contactoRef: { contains: "@" } },
+      select: { contactoRef: true },
+      take: 5000,
+    }),
   ]);
   const set = new Set<string>();
   for (const x of cts) {
@@ -44,6 +49,10 @@ async function loadRelevantEmailsSet() {
   for (const x of pcs) {
     const e = String(x.email ?? "").trim().toLowerCase();
     if (e) set.add(e);
+  }
+  for (const x of evRefs) {
+    const e = String(x.contactoRef ?? "").trim().toLowerCase();
+    if (e && e.includes("@")) set.add(e);
   }
   return set;
 }
