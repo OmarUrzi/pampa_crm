@@ -120,6 +120,13 @@ async function ingestMessage(gmail: any, mailboxId: string, gmailId: string, rel
     id: gmailId,
     format: "full",
   });
+  const labelIds = Array.isArray(full.data.labelIds) ? (full.data.labelIds as string[]) : [];
+  const hasDraft = labelIds.includes("DRAFT");
+  const hasInbox = labelIds.includes("INBOX");
+  const hasSent = labelIds.includes("SENT");
+  // Gmail can emit history events for drafts / intermediate states; we only persist real inbox/sent messages.
+  if (hasDraft || (!hasInbox && !hasSent)) return false;
+
   const headers = new Map<string, string>(
     (full.data.payload?.headers ?? []).map((h: any) => [
       String(h.name ?? "").toLowerCase(),
