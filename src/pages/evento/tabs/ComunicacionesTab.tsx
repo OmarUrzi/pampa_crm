@@ -7,6 +7,7 @@ import { refreshEventoDetailIntoStore } from "../../../api/hydrateEventoDetail";
 import { useCanEdit } from "../../../auth/perms";
 import { useAuthGate } from "../../../auth/useAuthGate";
 import { apiEventoGmailComms, apiEventoGmailThread, type GmailComm } from "../../../api/gmailComms";
+import { apiEventoWhatsAppComms, type WhatsAppComm } from "../../../api/whatsappComms";
 import { API_BASE, getToken } from "../../../api/client";
 
 function avatar(name: string, bg: string, fg: string) {
@@ -50,6 +51,9 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
   const [loadingGmail, setLoadingGmail] = useState(false);
   const [gmailOpen, setGmailOpen] = useState<GmailComm | null>(null);
   const [gmailTick, setGmailTick] = useState(0);
+  const [whats, setWhats] = useState<WhatsAppComm[]>([]);
+  const [loadingWhats, setLoadingWhats] = useState(false);
+  const [whatsTick, setWhatsTick] = useState(0);
   const esRef = useRef<EventSource | null>(null);
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [threadAll, setThreadAll] = useState<GmailComm[] | null>(null);
@@ -97,7 +101,7 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
       setLoadingGmail(true);
       try {
         const res = await gate.run(async () => await apiEventoGmailComms(eventoId));
-        if (!alive) return;
+        if (!alive) return [];
         const next = (res?.messages ?? []) as GmailComm[];
         setGmail(next);
         return next;
@@ -169,6 +173,33 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
       }
     };
   }, [eventoId, filter, gate, gmailTick]);
+
+  useEffect(() => {
+    let alive = true;
+    async function refresh(): Promise<WhatsAppComm[]> {
+      setLoadingWhats(true);
+      try {
+        const res = await gate.run(async () => await apiEventoWhatsAppComms(eventoId));
+        if (!alive) return [];
+        const next = (res?.messages ?? []) as WhatsAppComm[];
+        setWhats(next);
+        return next;
+      } finally {
+        if (alive) setLoadingWhats(false);
+      }
+    }
+
+    const shouldFetch = filter === "Todos" || filter === "WhatsApp";
+    if (!shouldFetch) return () => {
+      alive = false;
+    };
+
+    void refresh();
+
+    return () => {
+      alive = false;
+    };
+  }, [eventoId, filter, gate, whatsTick]);
 
   const filtered = useMemo(() => {
     if (filter === "Todos") return comms;
@@ -357,6 +388,78 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
                           ) : null}
                         </div>
                       ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+      ) : null}
+
+      {filter === "WhatsApp" || filter === "Todos" ? (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 900 }}>WhatsApp (auto)</div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{loadingWhats ? "actualizando…" : ""}</div>
+              <button
+                type="button"
+                onClick={() => setWhatsTick((x) => x + 1)}
+                style={{
+                  border: "0.5px solid var(--color-border-tertiary)",
+                  background: "transparent",
+                  color: "var(--color-text-secondary)",
+                  borderRadius: 10,
+                  padding: "6px 10px",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 800,
+                }}
+                title="Forzar refresh"
+              >
+                Actualizar
+              </button>
+            </div>
+          </div>
+
+          {(() => {
+            const sorted = [...whats].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+            if (!sorted.length) {
+              return (
+                <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+                  No hay mensajes WhatsApp asociados (o faltan teléfonos en contactos/proveedores).
+                </div>
+              );
+            }
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {sorted.map((m) => {
+                  const who = (m.fromPhone ?? "").trim() || (m.toPhone ?? "").trim() || "—";
+                  const body = (m.bodyText ?? "").trim() || "(sin contenido)";
+                  return (
+                    <div
+                      key={m.id}
+                      style={{
+                        border: "0.5px solid var(--color-border-tertiary)",
+                        borderRadius: 12,
+                        padding: "10px 12px",
+                        background: "var(--color-background-primary)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
+                        <div style={{ fontSize: 11, fontWeight: 900 }}>
+                          {who}{" "}
+                          <span style={{ fontWeight: 700, color: "var(--color-text-secondary)" }}>
+                            · {m.provider}
+                            {m.waChatId ? ` · ${m.waChatId}` : ""}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--color-text-secondary)", flexShrink: 0 }}>
+                          {new Date(m.at).toLocaleString()}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 12, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{body}</div>
                     </div>
                   );
                 })}

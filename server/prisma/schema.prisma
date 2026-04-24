@@ -124,6 +124,25 @@ model GmailMessage {
   @@index([fromEmail])
 }
 
+model WhatsAppMessage {
+  id          String   @id @default(cuid())
+  provider    String   @default("meta")
+  waMessageId String?
+  waChatId    String?
+  fromPhone   String?
+  toPhone     String?
+  bodyText    String?
+  raw         Json?
+  at          DateTime?
+  createdAt   DateTime @default(now())
+
+  @@unique([provider, waMessageId])
+  @@index([waChatId])
+  @@index([fromPhone])
+  @@index([toPhone])
+  @@index([at])
+}
+
 model RefreshToken {
   id        String   @id @default(cuid())
   userId    String

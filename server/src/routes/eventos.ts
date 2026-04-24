@@ -99,6 +99,60 @@ export async function registerEventoRoutes(app: FastifyInstance) {
     };
   });
 
+  // WhatsApp-derived communications for an event, matched by known contact phones.
+  app.get("/eventos/:id/whatsapp-comms", { preHandler: jwtVerifyGuard }, async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const ev = await prisma.evento.findUnique({ where: { id } });
+    if (!ev || ev.deletedAt) return reply.code(404).send({ error: "not_found" });
+
+    const empresaContactos = await prisma.contacto.findMany({
+      where: { empresaId: ev.empresaId, deletedAt: null, telefono: { not: null } },
+      select: { telefono: true },
+    });
+
+    const provContactos = await prisma.proveedorContacto.findMany({
+      where: {
+        deletedAt: null,
+        telefono: { not: null },
+        proveedor: { pedidos: { some: { eventoId: ev.id, deletedAt: null } } },
+      },
+      select: { telefono: true },
+      take: 200,
+    });
+
+    const normalize = (s: string) => s.replace(/[^\d+]/g, "");
+    const phones = Array.from(
+      new Set(
+        [...empresaContactos, ...provContactos]
+          .map((x) => normalize(String(x.telefono ?? "")))
+          .filter(Boolean),
+      ),
+    );
+
+    if (!phones.length) return { messages: [] };
+
+    const messages = await prisma.whatsAppMessage.findMany({
+      where: {
+        OR: [{ fromPhone: { in: phones } }, { toPhone: { in: phones } }],
+      },
+      orderBy: [{ at: "desc" }, { createdAt: "desc" }],
+      take: 80,
+    });
+
+    return {
+      messages: messages.map((m) => ({
+        id: m.id,
+        provider: m.provider,
+        waMessageId: m.waMessageId ?? null,
+        waChatId: m.waChatId ?? null,
+        fromPhone: m.fromPhone ?? null,
+        toPhone: m.toPhone ?? null,
+        bodyText: m.bodyText ?? null,
+        at: (m.at ?? m.createdAt).toISOString(),
+      })),
+    };
+  });
+
   // Fetch full thread for a given threadId (still filtered to event-relevant emails).
   app.get("/eventos/:id/gmail-thread", { preHandler: jwtVerifyGuard }, async (req, reply) => {
     const id = (req.params as { id: string }).id;
