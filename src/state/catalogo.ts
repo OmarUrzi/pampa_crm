@@ -5,7 +5,7 @@ export type CatalogoActividad = {
   categoria: string;
   precioUsd: number;
   proveedorSugerido: string;
-  fotos: string[];
+  fotos: Array<{ id: string; url: string }>;
 };
 
 export const catalogoActividades: CatalogoActividad[] = [

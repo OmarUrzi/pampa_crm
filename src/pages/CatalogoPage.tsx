@@ -64,7 +64,7 @@ export function CatalogoPage() {
                 categoria: a.categoria,
                 precioUsd: a.precioUsd ?? 0,
                 proveedorSugerido: a.proveedorTxt ?? "—",
-                fotos: a.fotos.map((f) => f.url ?? f.blobUrl).filter(Boolean) as string[],
+                fotos: a.fotos.map((f) => ({ id: f.id, url: (f.url ?? f.blobUrl)! })).filter((x) => !!x.url),
               })),
             );
           }}
@@ -85,7 +85,7 @@ export function CatalogoPage() {
                 categoria: a.categoria,
                 precioUsd: a.precioUsd ?? 0,
                 proveedorSugerido: a.proveedorTxt ?? "—",
-                fotos: a.fotos.map((f) => f.url ?? f.blobUrl).filter(Boolean) as string[],
+                fotos: a.fotos.map((f) => ({ id: f.id, url: (f.url ?? f.blobUrl)! })).filter((x) => !!x.url),
               })),
             );
           }}

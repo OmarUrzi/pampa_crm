@@ -6,6 +6,17 @@ import { requireWriteAccess } from "../auth/roleGuards.js";
 import { auditLog } from "../audit.js";
 
 export async function registerCatalogoRoutes(app: FastifyInstance) {
+  function mapFoto(f: any) {
+    const blobUrl = f?.bytes ? `/catalogo/fotos/${f.id}/blob` : null;
+    return {
+      id: f.id,
+      url: f.url ?? null,
+      caption: f.caption ?? null,
+      hasBytes: !!f.bytes,
+      blobUrl,
+    };
+  }
+
   app.get("/catalogo/fotos/:fotoId/blob", async (req, reply) => {
     const fotoId = (req.params as { fotoId: string }).fotoId;
     const foto = await prisma.actividadFoto.findUnique({
@@ -32,7 +43,12 @@ export async function registerCatalogoRoutes(app: FastifyInstance) {
         temporadas: { where: { deletedAt: null }, orderBy: { temporada: "asc" } },
       },
     });
-    return { actividades };
+    return {
+      actividades: actividades.map((a) => ({
+        ...a,
+        fotos: (a.fotos ?? []).map(mapFoto),
+      })),
+    };
   });
 
   app.get("/catalogo/:id", async (req, reply) => {
@@ -45,7 +61,7 @@ export async function registerCatalogoRoutes(app: FastifyInstance) {
       },
     });
     if (!actividad || actividad.deletedAt) return reply.code(404).send({ error: "not_found" });
-    return { actividad };
+    return { actividad: { ...actividad, fotos: (actividad.fotos ?? []).map(mapFoto) } };
   });
 
   app.post("/catalogo", { preHandler: [jwtVerifyGuard, requireWriteAccess()] }, async (req, reply) => {
@@ -91,7 +107,7 @@ export async function registerCatalogoRoutes(app: FastifyInstance) {
       data: body,
     });
 
-    return reply.code(201).send({ actividad });
+    return reply.code(201).send({ actividad: { ...actividad, fotos: (actividad.fotos ?? []).map(mapFoto) } });
   });
 
   app.patch("/catalogo/:id", { preHandler: [jwtVerifyGuard, requireWriteAccess()] }, async (req, reply) => {
@@ -136,7 +152,7 @@ export async function registerCatalogoRoutes(app: FastifyInstance) {
       data: body,
     });
 
-    return reply.send({ actividad });
+    return reply.send({ actividad: { ...actividad, fotos: (actividad.fotos ?? []).map(mapFoto) } });
   });
 
   app.delete("/catalogo/:id", { preHandler: [jwtVerifyGuard, requireWriteAccess()] }, async (req, reply) => {
@@ -211,7 +227,7 @@ export async function registerCatalogoRoutes(app: FastifyInstance) {
         data: { caption, fileName, mime, size: bytes.length },
       });
 
-      return reply.code(201).send({ foto });
+      return reply.code(201).send({ foto: mapFoto(foto) });
     }
 
     const schema = z.object({ url: z.string().min(1), caption: z.string().optional() });
@@ -230,7 +246,7 @@ export async function registerCatalogoRoutes(app: FastifyInstance) {
       data: body,
     });
 
-    return reply.code(201).send({ foto });
+    return reply.code(201).send({ foto: mapFoto(foto) });
   });
 
   app.patch("/catalogo/:id/fotos/:fotoId", { preHandler: [jwtVerifyGuard, requireWriteAccess()] }, async (req, reply) => {

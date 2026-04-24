@@ -5,6 +5,7 @@ export type ApiActividadFoto = {
   url: string | null;
   caption: string | null;
   hasBytes?: boolean;
+  blobUrl?: string | null;
 };
 
 export type ApiActividad = {
@@ -64,6 +65,12 @@ export async function apiUploadActividadFoto(input: { actividadId: string; file:
   return await apiFetch<{ foto: ApiActividadFoto }>(`/catalogo/${input.actividadId}/fotos`, {
     method: "POST",
     body: fd,
+  });
+}
+
+export async function apiDeleteActividadFoto(input: { actividadId: string; fotoId: string }) {
+  return await apiFetch<{ ok: boolean }>(`/catalogo/${input.actividadId}/fotos/${input.fotoId}`, {
+    method: "DELETE",
   });
 }
 

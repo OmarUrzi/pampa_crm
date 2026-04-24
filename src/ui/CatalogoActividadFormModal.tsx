@@ -4,7 +4,7 @@ import { Button } from "./ui";
 import { SearchDropdown } from "./SearchDropdown";
 import { useAppStore } from "../state/useAppStore";
 import type { CatalogoActividad } from "../state/catalogo";
-import { apiCreateActividad, apiDeleteActividad, apiPatchActividad, apiUploadActividadFoto } from "../api/catalogo";
+import { apiCreateActividad, apiDeleteActividad, apiPatchActividad, apiUploadActividadFoto, apiDeleteActividadFoto } from "../api/catalogo";
 import { useCanEdit } from "../auth/perms";
 import { useAuthGate } from "../auth/useAuthGate";
 import { ConfirmModal } from "./ConfirmModal";
@@ -15,7 +15,7 @@ type FormState = {
   categoria: string;
   precioUsd: number;
   proveedorId: string;
-  fotos: string[];
+  fotos: Array<{ id: string; url: string }>;
   uploads: File[];
 };
 
@@ -82,7 +82,12 @@ export function CatalogoActividadFormModal({
       categoria: a.categoria,
       precioUsd: a.precioUsd ?? 0,
       proveedorSugerido: a.proveedorTxt ?? "—",
-      fotos: (a.fotos ?? []).map((f: any) => f.url),
+      fotos: (a.fotos ?? [])
+        .map((ph: any) => ({
+          id: String(ph.id ?? ""),
+          url: String(ph.url ?? ph.blobUrl ?? "").trim(),
+        }))
+        .filter((x: any) => x.id && x.url),
     };
   }
 
@@ -95,10 +100,7 @@ export function CatalogoActividadFormModal({
       categoria: f.categoria.trim() || "—",
       precioUsd: Number.isFinite(f.precioUsd) ? f.precioUsd : 0,
       proveedorTxt: prov?.nombre ?? undefined,
-      fotos: f.fotos
-        .map((x) => x.trim())
-        .filter(Boolean)
-        .map((url) => ({ url })),
+      fotos: f.fotos.map((x) => ({ url: x.url })),
     };
 
     // Close immediately for snappier UX; update list optimistically.
@@ -115,7 +117,7 @@ export function CatalogoActividadFormModal({
           categoria: payload.categoria,
           precioUsd: payload.precioUsd ?? 0,
           proveedorSugerido: payload.proveedorTxt ?? "—",
-          fotos: payload.fotos?.map((x) => x.url) ?? [],
+          fotos: payload.fotos?.map((x) => ({ id: `tmp-photo-${Date.now()}-${Math.random().toString(16).slice(2)}`, url: x.url })) ?? [],
         };
         setCatalogo([optimistic, ...actividades]);
 
@@ -265,15 +267,15 @@ export function CatalogoActividadFormModal({
         <div style={{ gridColumn: "1 / -1" }}>
           <label style={labelStyle}>Álbum de fotos (URLs)</label>
           <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
-            {(f.fotos.length ? f.fotos : [""]).map((url, idx) => (
+            {(f.fotos.length ? f.fotos : [{ id: "tmp-empty", url: "" }]).map((ph, idx) => (
               <div key={idx} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <input
-                  value={url}
+                  value={ph.url}
                   onChange={(e) => {
                     const v = e.target.value;
                     setF((s) => {
-                      const fotos = s.fotos.length ? [...s.fotos] : [""];
-                      fotos[idx] = v;
+                      const fotos = s.fotos.length ? [...s.fotos] : [{ id: `tmp-url-${Date.now()}`, url: "" }];
+                      fotos[idx] = { ...fotos[idx]!, url: v };
                       return { ...s, fotos };
                     });
                   }}
@@ -283,10 +285,19 @@ export function CatalogoActividadFormModal({
                 />
                 <Button
                   type="button"
-                  onClick={() =>
-                    setF((s) => ({ ...s, fotos: s.fotos.filter((_, i) => i !== idx) }))
-                  }
-                  disabled={!f.fotos.length || !canEdit}
+                  onClick={() => {
+                    const cur = f.fotos[idx];
+                    if (!cur) return;
+                    if (!canEdit) return void gate.ensureAuthed();
+                    void gate.run(async () => {
+                      // If it is an existing photo (not tmp), delete in backend too.
+                      if (cur.id && !cur.id.startsWith("tmp-") && cur.id !== "tmp-empty") {
+                        await apiDeleteActividadFoto({ actividadId: initial?.id ?? "", fotoId: cur.id });
+                      }
+                      setF((s) => ({ ...s, fotos: s.fotos.filter((_, i) => i !== idx) }));
+                    });
+                  }}
+                  disabled={!canEdit}
                 >
                   Quitar
                 </Button>
@@ -295,7 +306,7 @@ export function CatalogoActividadFormModal({
             <div>
               <Button
                 type="button"
-                onClick={() => setF((s) => ({ ...s, fotos: [...s.fotos, ""] }))}
+                onClick={() => setF((s) => ({ ...s, fotos: [...s.fotos, { id: `tmp-url-${Date.now()}`, url: "" }] }))}
                 disabled={!canEdit}
               >
                 + Agregar foto
