@@ -166,9 +166,10 @@ export function CatalogoActividadFormModal({
         <ConfirmModal
           title="Eliminar actividad"
           message="¿Realmente querés eliminar esta actividad del catálogo?"
-          confirmLabel="Sí, eliminar"
-          intent="danger"
-          onCancel={() => setConfirmDelete(false)}
+          confirmText="Sí, eliminar"
+          cancelText="Cancelar"
+          danger
+          onClose={() => setConfirmDelete(false)}
           onConfirm={() => {
             setConfirmDelete(false);
             void gate.run(async () => {

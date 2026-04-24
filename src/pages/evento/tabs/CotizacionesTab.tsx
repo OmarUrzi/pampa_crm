@@ -153,7 +153,7 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
           confirmText="Sí, eliminar"
           cancelText="Cancelar"
           danger
-          onCancel={() => setConfirmDelete(null)}
+          onClose={() => setConfirmDelete(null)}
           onConfirm={() => {
             const { versionId, itemId } = confirmDelete;
             setConfirmDelete(null);

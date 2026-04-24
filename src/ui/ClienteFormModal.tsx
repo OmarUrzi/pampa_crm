@@ -279,9 +279,9 @@ export function ClienteFormModal({
       {confirmDelContactIdx !== null ? (
         <ConfirmModal
           title="Eliminar contacto"
-          description="¿Realmente querés eliminar este contacto?"
-          confirmLabel="Sí, eliminar"
-          onCancel={() => setConfirmDelContactIdx(null)}
+          message="¿Realmente querés eliminar este contacto?"
+          confirmText="Sí, eliminar"
+          onClose={() => setConfirmDelContactIdx(null)}
           onConfirm={() => {
             deleteContact(confirmDelContactIdx);
             setConfirmDelContactIdx(null);

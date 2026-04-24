@@ -193,8 +193,8 @@ export function ProveedorFormModal({
         <ConfirmModal
           title="Eliminar contacto"
           message="¿Realmente querés eliminar este contacto?"
-          confirmLabel="Sí, eliminar"
-          onCancel={() => setConfirmRemoveContact(null)}
+          confirmText="Sí, eliminar"
+          onClose={() => setConfirmRemoveContact(null)}
           onConfirm={() => {
             const idx = confirmRemoveContact;
             setConfirmRemoveContact(null);
