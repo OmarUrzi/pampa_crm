@@ -22,6 +22,14 @@ export async function apiSyncMailbox(id: string) {
   });
 }
 
+export async function apiWatchMailbox(id: string) {
+  return await apiFetch<{ ok: boolean }>(`/mailboxes/${id}/watch`, {
+    method: "POST",
+    body: JSON.stringify({}),
+    timeoutMs: 30_000,
+  });
+}
+
 export async function apiMailboxCommsByEmail(email: string) {
   const q = encodeURIComponent(email);
   return await apiFetch<{

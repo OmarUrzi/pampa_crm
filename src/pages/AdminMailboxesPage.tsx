@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../api/client";
-import { apiListMailboxes, apiMailboxCommsByEmail, apiSyncMailbox, type Mailbox } from "../api/mailboxes";
+import { apiListMailboxes, apiMailboxCommsByEmail, apiSyncMailbox, apiWatchMailbox, type Mailbox } from "../api/mailboxes";
 import { useAuthStore } from "../state/useAuthStore";
 import { useAuthGate } from "../auth/useAuthGate";
 import { Button, Pill } from "../ui/ui";
@@ -13,6 +13,7 @@ export function AdminMailboxesPage() {
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncingById, setSyncingById] = useState<Record<string, boolean>>({});
+  const [watchingById, setWatchingById] = useState<Record<string, boolean>>({});
   const [email, setEmail] = useState("");
   const [messages, setMessages] = useState<
     Array<{ id: string; mailbox: string; fromEmail: string | null; toEmails: string[]; subject: string | null; snippet: string | null; at: string }>
@@ -34,6 +35,11 @@ export function AdminMailboxesPage() {
   }, [isAdmin, run]);
 
   const connectUrl = useMemo(() => `${API_BASE}/auth/google-gmail`, []);
+
+  async function refreshMailboxes() {
+    const res = await apiListMailboxes();
+    setMailboxes(res?.mailboxes ?? []);
+  }
 
   if (!isAdmin) {
     return (
@@ -103,11 +109,11 @@ export function AdminMailboxesPage() {
                     connected
                   </Pill>
                   {m.lastHistoryId ? (
-                    <Pill style={{ background: "#E6F5F0", color: "#0F6E56", marginLeft: 8 }}>
+                    <Pill style={{ background: "var(--color-success-bg)", color: "var(--color-success-fg)", marginLeft: 8 }}>
                       watch ON
                     </Pill>
                   ) : (
-                    <Pill style={{ background: "#FFF8EC", color: "#854F0B", marginLeft: 8 }}>
+                    <Pill style={{ background: "var(--color-warning-bg)", color: "var(--color-warning-fg)", marginLeft: 8 }}>
                       watch OFF
                     </Pill>
                   )}
@@ -120,12 +126,30 @@ export function AdminMailboxesPage() {
                 <td style={{ padding: "9px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
                   <Button
                     type="button"
+                    disabled={!!watchingById[m.id]}
+                    onClick={() => {
+                      void run(async () => {
+                        setWatchingById((s) => ({ ...s, [m.id]: true }));
+                        try {
+                          await apiWatchMailbox(m.id);
+                          await refreshMailboxes();
+                        } finally {
+                          setWatchingById((s) => ({ ...s, [m.id]: false }));
+                        }
+                      });
+                    }}
+                  >
+                    {watchingById[m.id] ? "Re-watch…" : "Re-watch"}
+                  </Button>
+                  <Button
+                    type="button"
                     disabled={!!syncingById[m.id]}
                     onClick={() => {
                       void run(async () => {
                         setSyncingById((s) => ({ ...s, [m.id]: true }));
                         try {
                           await apiSyncMailbox(m.id);
+                          await refreshMailboxes();
                         } finally {
                           setSyncingById((s) => ({ ...s, [m.id]: false }));
                         }

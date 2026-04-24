@@ -163,6 +163,40 @@ export async function registerMailboxRoutes(app: FastifyInstance) {
     return { mailboxes };
   });
 
+  // Re-activate Gmail watch (Gmail -> Pub/Sub -> webhook) when it expires (~7 days) or was never started.
+  app.post(
+    "/mailboxes/:id/watch",
+    { preHandler: [jwtVerifyGuard, requireRole(["admin"])] },
+    async (req, reply) => {
+      const id = (req.params as { id: string }).id;
+      const c = await gmailClientForMailbox(id);
+      if (!c) return reply.code(404).send({ error: "not_found" });
+      if (!env.GOOGLE_PUBSUB_TOPIC) return reply.code(400).send({ error: "pubsub_not_configured" });
+
+      await c.gmail.users.watch({
+        userId: "me",
+        requestBody: {
+          topicName: env.GOOGLE_PUBSUB_TOPIC,
+          // We want both incoming and outgoing for a full conversation.
+          labelIds: ["INBOX", "SENT"],
+        },
+      });
+
+      try {
+        const prof = await c.gmail.users.getProfile({ userId: "me" });
+        const hid = prof.data.historyId ? String(prof.data.historyId) : null;
+        await prisma.googleMailbox.update({
+          where: { id: c.mailbox.id },
+          data: { lastHistoryId: hid, lastSyncAt: new Date() },
+        });
+      } catch {
+        // ignore
+      }
+
+      return reply.send({ ok: true });
+    },
+  );
+
   app.post(
     "/mailboxes/:id/backfill-all",
     { preHandler: [jwtVerifyGuard, requireRole(["admin"])] },
