@@ -59,7 +59,8 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
     const raw = String(x ?? "").replace(/\r\n/g, "\n");
     const lines = raw.split("\n");
     const out: string[] = [];
-    for (const ln of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const ln = lines[i] ?? "";
       const s = ln.trimEnd();
       const t = s.trim();
       if (!t) {
@@ -68,11 +69,15 @@ export function ComunicacionesTab({ eventoId }: { eventoId: string }) {
         continue;
       }
       if (t.startsWith(">")) continue; // quoted line
-      if (/^-----\s*original message\s*-----$/i.test(t)) break;
-      if (/^-----\s*mensaje original\s*-----$/i.test(t)) break;
-      if (/^on .+wrote:$/i.test(t)) break;
-      if (/^el .+escribi[oó]:$/i.test(t)) break;
+      // Stop when we hit the quoted/reply “mamushka”.
+      if (/^-----\s*(original message|mensaje original|forwarded message|mensaje reenviado)\s*-----$/i.test(t)) break;
       if (/^from:\s/i.test(t) && out.length > 3) break; // header block of older message
+      if (/^de:\s/i.test(t) && out.length > 3) break; // spanish header block
+      if (/^on\s.+$/i.test(t) && /wrote:$/i.test((lines[i + 1] ?? "").trim())) break; // split “On …” + “wrote:”
+      if (/wrote:\s*$/i.test(t)) break;
+      if (/^on .+wrote:\s*$/i.test(t)) break;
+      if (/^el .+escribi[oó]:\s*$/i.test(t)) break;
+      if (/escribi[oó]:\s*$/i.test(t)) break;
       out.push(s);
     }
     return out.join("\n").trim();
