@@ -145,6 +145,10 @@ async function ingestMessage(gmail: any, mailboxId: string, gmailId: string, rel
 
   const bodyTextRaw = extractBodyText(full.data.payload);
   const bodyText = bodyTextRaw ? bodyTextRaw.slice(0, 40_000) : null;
+  const subject = (headers.get("subject") ?? "").trim();
+  const snippet = String(full.data.snippet ?? "").trim();
+  // Drop known “ghost” entries that sometimes appear for sent flows / intermediate states.
+  if (!subject && !snippet && !bodyText) return false;
 
   const internalAt = full.data.internalDate ? new Date(Number(full.data.internalDate)) : null;
 
@@ -154,8 +158,8 @@ async function ingestMessage(gmail: any, mailboxId: string, gmailId: string, rel
       threadId: full.data.threadId ?? null,
       fromEmail,
       toEmails: to.length ? JSON.stringify(to) : null,
-      subject: headers.get("subject") ?? null,
-      snippet: full.data.snippet ?? null,
+      subject: subject || null,
+      snippet: snippet || null,
       bodyText,
       internalAt,
     },
@@ -165,8 +169,8 @@ async function ingestMessage(gmail: any, mailboxId: string, gmailId: string, rel
       threadId: full.data.threadId ?? null,
       fromEmail,
       toEmails: to.length ? JSON.stringify(to) : null,
-      subject: headers.get("subject") ?? null,
-      snippet: full.data.snippet ?? null,
+      subject: subject || null,
+      snippet: snippet || null,
       bodyText,
       internalAt,
     },
