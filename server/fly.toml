@@ -1,30 +1,39 @@
-app = "pampa-crm"
-primary_region = "gru"
+# fly.toml app configuration file generated for pampa-crm on 2026-04-25T12:29:02Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'pampa-crm'
+primary_region = 'gru'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
-# Aplica migraciones Prisma en cada deploy (p. ej. nuevos valores de enum como AiProvider).
 [deploy]
-  release_command = "npx prisma migrate deploy"
+  release_command = 'npx prisma migrate deploy'
 
 [processes]
-  app = "node dist/index.js"
+  app = 'node dist/index.js'
 
 [http_service]
-  internal_port = 8787
-  processes = ["app"]
+  internal_port = 8080
   force_https = true
+  auto_stop_machines = 'stop'
   auto_start_machines = true
-  auto_stop_machines = "stop"
   min_machines_running = 1
+  processes = ['app']
 
 [checks]
   [checks.health]
-    type = "http"
-    interval = "15s"
-    timeout = "2s"
-    grace_period = "20s"
-    method = "GET"
-    path = "/health"
+    type = 'http'
+    interval = '15s'
+    timeout = '2s'
+    grace_period = '20s'
+    method = 'GET'
+    path = '/health'
 
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 1024
