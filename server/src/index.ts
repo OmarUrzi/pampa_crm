@@ -108,7 +108,6 @@ await registerAdminRoutes(app);
 await registerMailboxRoutes(app);
 await registerClienteRoutes(app);
 await registerAgenciaRoutes(app);
-await registerAgenciaRoutes(app);
 
 app.get("/health", async () => ({ ok: true }));
 
