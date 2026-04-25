@@ -4,6 +4,7 @@ import { prisma } from "../prisma.js";
 import { jwtVerifyGuard } from "../auth/jwtGuards.js";
 import { requireWriteAccess } from "../auth/roleGuards.js";
 import { auditLog } from "../audit.js";
+import { acceptJwtFromQuery } from "../services/tokenQueryAuth.js";
 
 export async function registerCatalogoRoutes(app: FastifyInstance) {
   function mapFoto(f: any) {
@@ -18,6 +19,10 @@ export async function registerCatalogoRoutes(app: FastifyInstance) {
   }
 
   app.get("/catalogo/fotos/:fotoId/blob", async (req, reply) => {
+    // Allow passing JWT in query for tools/LLMs that can't send headers.
+    // If token is missing/invalid we still allow public access to the blob (current behavior),
+    // but this keeps the door open for tightening later without breaking clients.
+    await acceptJwtFromQuery(req, reply, { required: false });
     const fotoId = (req.params as { fotoId: string }).fotoId;
     const foto = await prisma.actividadFoto.findUnique({
       where: { id: fotoId },

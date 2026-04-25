@@ -18,10 +18,12 @@ import { registerCommsRoutes } from "./routes/comms.js";
 import { registerChatRoutes } from "./routes/chat.js";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerSlidesRoutes } from "./routes/slides.js";
+import { registerSlidesEventoRoutes } from "./routes/slidesEvento.js";
 import { registerAiRoutes } from "./routes/ai.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerMailboxRoutes } from "./routes/mailboxes.js";
 import { registerClienteRoutes } from "./routes/clientes.js";
+import { registerAgenciaRoutes } from "./routes/agencia.js";
 
 const app = Fastify({
   logger: true,
@@ -100,10 +102,13 @@ await registerCommsRoutes(app);
 await registerChatRoutes(app);
 await registerAuditRoutes(app);
 await registerSlidesRoutes(app);
+await registerSlidesEventoRoutes(app);
 await registerAiRoutes(app);
 await registerAdminRoutes(app);
 await registerMailboxRoutes(app);
 await registerClienteRoutes(app);
+await registerAgenciaRoutes(app);
+await registerAgenciaRoutes(app);
 
 app.get("/health", async () => ({ ok: true }));
 

@@ -361,6 +361,44 @@ model SlideDeck {
   @@index([createdAt])
 }
 
+model AgencyProfile {
+  id        String   @id @default(cuid())
+  name      String
+  tagline   String?
+  about     String?
+  contact   String?
+  website   String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assets AgencyAsset[]
+
+  @@index([deletedAt])
+  @@index([createdAt])
+}
+
+model AgencyAsset {
+  id        String   @id @default(cuid())
+  agencyId  String
+  kind      String   // "logo_square" | "logo_wide" | "photo" | "doc" | etc
+  label     String?
+  url       String?
+  bytes     Bytes?
+  mime      String?
+  filename  String?
+  sizeBytes Int?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agency AgencyProfile @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([kind])
+  @@index([deletedAt])
+}
+
 model ActividadCatalogo {
   id        String   @id @default(cuid())
   nombre    String

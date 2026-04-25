@@ -55,6 +55,7 @@ export function Sidebar() {
     { to: "/admin/users", label: "Usuarios", icon: "◈" },
     { to: "/admin/mailboxes", label: "Mailboxes", icon: "◉" },
     { to: "/admin/ai", label: "AI", icon: "◎" },
+    { to: "/admin/agencia", label: "Agencia", icon: "◫" },
   ] as const;
 
   return (

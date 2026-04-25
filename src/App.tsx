@@ -11,6 +11,7 @@ import { EstadisticasPage } from "./pages/EstadisticasPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { AdminMailboxesPage } from "./pages/AdminMailboxesPage";
 import { AdminAiProvidersPage } from "./pages/AdminAiProvidersPage";
+import { AdminAgenciaPage } from "./pages/AdminAgenciaPage";
 import { useEffect } from "react";
 import { apiListProveedores } from "./api/proveedores";
 import { useAppStore } from "./state/useAppStore";
@@ -80,6 +81,7 @@ export function App() {
         <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="/admin/mailboxes" element={<AdminMailboxesPage />} />
         <Route path="/admin/ai" element={<AdminAiProvidersPage />} />
+        <Route path="/admin/agencia" element={<AdminAgenciaPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Route>
