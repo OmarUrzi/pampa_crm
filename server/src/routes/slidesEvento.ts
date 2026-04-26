@@ -166,7 +166,15 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       });
       deck = JSON.parse(txt) as EventoDeck;
     } catch (e) {
-      if (e instanceof AiUpstreamError) return reply.code(502).send({ error: "ai_upstream_error", message: "Error generando slides con Claude." });
+      if (e instanceof AiUpstreamError) {
+        return reply.code(502).send({
+          error: "ai_upstream_error",
+          message: "Error generando slides con Claude.",
+          provider: e.provider,
+          httpStatus: e.httpStatus,
+          bodySnippet: e.bodySnippet,
+        });
+      }
       return reply.code(502).send({ error: "ai_parse_error", message: "Claude devolvió un JSON inválido." });
     }
 

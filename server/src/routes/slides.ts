@@ -151,7 +151,13 @@ export async function registerSlidesRoutes(app: FastifyInstance) {
       });
     } catch (e) {
       if (e instanceof AiUpstreamError) {
-        return reply.code(502).send({ error: "ai_upstream_error", message: "Error generando slides con Claude." });
+        return reply.code(502).send({
+          error: "ai_upstream_error",
+          message: "Error generando slides con Claude.",
+          provider: e.provider,
+          upstreamStatus: e.httpStatus,
+          upstreamBodySnippet: e.bodySnippet,
+        });
       }
       throw e;
     }
