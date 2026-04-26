@@ -56,6 +56,30 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
     if (!s.startsWith("/")) return s;
     return `${API_BASE}${s}`;
   };
+  const openDownload = (absoluteUrl: string, filename: string) => {
+    const a = document.createElement("a");
+    a.href = absoluteUrl;
+    a.download = filename;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+  const downloadHtml = (html: string, filename: string) => {
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const objUrl = URL.createObjectURL(blob);
+    try {
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(objUrl), 5_000);
+    }
+  };
 
   const active = useMemo<CotizacionVersion | null>(() => {
     if (!activeVersionId) return null;
@@ -398,16 +422,13 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                     // Claude puede demorar; evitamos abortar el request por timeout del cliente.
                     timeoutMs: 210_000,
                   } as any);
-                  const url = toAbsoluteSlidesUrl(res?.url ?? "");
-                  if (url) {
-                    window.open(url, "_blank", "noopener,noreferrer");
+                  const deckUrl = toAbsoluteSlidesUrl(res?.url ?? "");
+                  if (deckUrl) {
+                    const dl = new URL(deckUrl);
+                    dl.searchParams.set("download", "1");
+                    openDownload(dl.toString(), `slides-${eventoId}.html`);
                   } else if (res?.previewHtml) {
-                    const win = window.open("", "_blank", "noopener,noreferrer");
-                    if (win) {
-                      win.document.open();
-                      win.document.write(res.previewHtml);
-                      win.document.close();
-                    }
+                    downloadHtml(res.previewHtml, `slides-${eventoId}.html`);
                   }
                   try {
                     const list = await apiListSlidesForEvento(eventoId);
@@ -443,10 +464,16 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                   </div>
                   <Button
                     type="button"
-                    onClick={() => window.open(toAbsoluteSlidesUrl((d as any).url ?? ""), "_blank", "noopener,noreferrer")}
+                    onClick={() => {
+                      const deckUrl = toAbsoluteSlidesUrl((d as any).url ?? "");
+                      if (!deckUrl) return;
+                      const dl = new URL(deckUrl);
+                      dl.searchParams.set("download", "1");
+                      openDownload(dl.toString(), `slides-${d.id}.html`);
+                    }}
                     style={{ fontSize: 11, padding: "6px 10px", flexShrink: 0 }}
                   >
-                    Ver ↗
+                    Descargar ↗
                   </Button>
                 </div>
               ))
