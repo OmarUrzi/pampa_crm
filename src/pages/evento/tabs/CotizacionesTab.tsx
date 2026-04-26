@@ -3,7 +3,7 @@ import type { CotizacionVersion, Currency } from "../../../types";
 import { Button } from "../../../ui/ui";
 import { ConfirmModal } from "../../../ui/ConfirmModal";
 import { useAppStore } from "../../../state/useAppStore";
-import { apiFetch } from "../../../api/client";
+import { API_BASE, apiFetch } from "../../../api/client";
 import { SearchDropdown } from "../../../ui/SearchDropdown";
 import { ProveedorFormModal } from "../../../ui/ProveedorFormModal";
 import { useCanEdit } from "../../../auth/perms";
@@ -49,6 +49,13 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
   const [confirmDelete, setConfirmDelete] = useState<null | { versionId: string; itemId: string }>(null);
   const [slides, setSlides] = useState<SlideDeckListItem[]>([]);
   const [slidesLoading, setSlidesLoading] = useState(false);
+  const toAbsoluteSlidesUrl = (urlOrPath: string) => {
+    const s = String(urlOrPath ?? "").trim();
+    if (!s) return s;
+    if (/^https?:\/\//i.test(s)) return s;
+    if (!s.startsWith("/")) return s;
+    return `${API_BASE}${s}`;
+  };
 
   const active = useMemo<CotizacionVersion | null>(() => {
     if (!activeVersionId) return null;
@@ -391,8 +398,8 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                     // Claude puede demorar; evitamos abortar el request por timeout del cliente.
                     timeoutMs: 210_000,
                   } as any);
-                  const url = res?.url ?? "https://docs.google.com/presentation/d/FAKE_DECK_ID/edit";
-                  window.open(url, "_blank", "noopener,noreferrer");
+                  const url = toAbsoluteSlidesUrl(res?.url ?? "");
+                  if (url) window.open(url, "_blank", "noopener,noreferrer");
                   try {
                     const list = await apiListSlidesForEvento(eventoId);
                     setSlides((list?.decks ?? []) as SlideDeckListItem[]);
@@ -427,7 +434,7 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                   </div>
                   <Button
                     type="button"
-                    onClick={() => window.open(d.url, "_blank", "noopener,noreferrer")}
+                    onClick={() => window.open(toAbsoluteSlidesUrl((d as any).url ?? ""), "_blank", "noopener,noreferrer")}
                     style={{ fontSize: 11, padding: "6px 10px", flexShrink: 0 }}
                   >
                     Ver ↗
