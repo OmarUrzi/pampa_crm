@@ -234,6 +234,8 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         system,
         messages: [{ role: "user", content: user }],
         model: "claude-sonnet-4-6",
+        maxTokens: 2400,
+        stopSequences: ["\n\nINSTRUCCION:", "\n\nCONTEXT_JSON:"],
       });
       const parsed = tryParseDeckJson(txt);
       if (!parsed.ok) {

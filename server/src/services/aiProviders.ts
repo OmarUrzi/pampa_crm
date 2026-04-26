@@ -70,6 +70,9 @@ export async function callAnthropicClaude(input: {
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   system?: string;
   model?: string;
+  maxTokens?: number;
+  temperature?: number;
+  stopSequences?: string[];
 }): Promise<string> {
   const model = input.model ?? process.env.CLAUDE_MODEL ?? "claude-sonnet-4-6";
   const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -81,10 +84,11 @@ export async function callAnthropicClaude(input: {
     },
     body: JSON.stringify({
       model,
-      max_tokens: 800,
-      temperature: 0.2,
+      max_tokens: input.maxTokens ?? 1200,
+      temperature: input.temperature ?? 0.2,
       system: input.system ?? undefined,
       messages: input.messages,
+      stop_sequences: input.stopSequences ?? undefined,
     }),
   });
   const text = await res.text();
