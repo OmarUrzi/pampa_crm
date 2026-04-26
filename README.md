@@ -136,6 +136,11 @@ Variables recomendadas (secrets en Fly):
 - `FRONTEND_URLS=https://app.tudominio.com`
 - `PORT=8787`
 
+### Admin → Agencia
+
+- La pantalla `Admin → Agencia` permite cargar datos de marca (nombre/tagline/about/contact/website) y subir logos.
+- Los assets se guardan en DB y se sirven por `/agencia/assets/:id/blob` (acepta `?token=` para fetchers sin headers).
+
 Migraciones en prod:
 
 - `prisma migrate deploy`
