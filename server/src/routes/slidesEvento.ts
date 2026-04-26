@@ -24,6 +24,27 @@ type EventoDeck = {
   >;
 };
 
+function tryParseDeckJson(raw: string): { ok: true; deck: EventoDeck } | { ok: false } {
+  const txt = String(raw ?? "").trim();
+  if (!txt) return { ok: false };
+  try {
+    return { ok: true, deck: JSON.parse(txt) as EventoDeck };
+  } catch {
+    // Try to salvage the first JSON object if the model prepended/appended text.
+    const a = txt.indexOf("{");
+    const b = txt.lastIndexOf("}");
+    if (a >= 0 && b > a) {
+      const slice = txt.slice(a, b + 1);
+      try {
+        return { ok: true, deck: JSON.parse(slice) as EventoDeck };
+      } catch {
+        return { ok: false };
+      }
+    }
+    return { ok: false };
+  }
+}
+
 function apiAbsUrl(path: string) {
   const base = String(process.env.API_PUBLIC_BASE ?? "").trim().replace(/\/$/, "");
   if (!base) return path; // fallback
@@ -147,11 +168,15 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
     const system = [
       "Sos un asistente que arma presentaciones de cotización para una agencia de eventos.",
       "Respondé SOLO JSON válido, sin markdown, sin texto extra.",
+      'NO uses la clave "type". Usá SIEMPRE la clave "kind".',
+      'Los valores permitidos para slide.kind son: "title" | "section" | "quote_item" | "closing".',
+      "Escapá saltos de línea dentro de strings como \\n.",
       "Usá el contexto provisto (agencia, evento, cotización) para estructurar el deck.",
       "Incluí logo de agencia en la portada si hay assets disponibles.",
       "Usá como máximo 14 slides.",
       "Estructura requerida:",
       '{"title": string, "logo"?: { "variant"?: "square"|"wide", "url"?: string }, "slides": [ ... ] }',
+      'Ejemplo mínimo válido: {"title":"Cotización","slides":[{"kind":"title","title":"...","subtitle":"..."}]}',
     ].join("\n");
 
     const user = `CONTEXT_JSON:\n${JSON.stringify(context)}\n\nINSTRUCCION:\n${body.prompt}`;
@@ -162,11 +187,10 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         apiKey,
         system,
         messages: [{ role: "user", content: user }],
-        model: process.env.CLAUDE_MODEL ?? "claude-sonnet-4-6",
+        model: "claude-sonnet-4-6",
       });
-      try {
-        deck = JSON.parse(txt) as EventoDeck;
-      } catch {
+      const parsed = tryParseDeckJson(txt);
+      if (!parsed.ok) {
         // eslint-disable-next-line no-console
         console.warn("[slidesEvento] Claude JSON parse error", {
           eventoId: body.eventoId,
@@ -178,6 +202,7 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
           upstreamBodySnippet: String(txt ?? "").slice(0, 2000),
         });
       }
+      deck = parsed.deck;
     } catch (e) {
       if (e instanceof AiUpstreamError) {
         return reply.code(502).send({
