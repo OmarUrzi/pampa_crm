@@ -3,7 +3,7 @@ import type { CotizacionVersion, Currency } from "../../../types";
 import { Button } from "../../../ui/ui";
 import { ConfirmModal } from "../../../ui/ConfirmModal";
 import { useAppStore } from "../../../state/useAppStore";
-import { API_BASE, apiFetch } from "../../../api/client";
+import { API_BASE, apiFetch, getToken } from "../../../api/client";
 import { SearchDropdown } from "../../../ui/SearchDropdown";
 import { ProveedorFormModal } from "../../../ui/ProveedorFormModal";
 import { useCanEdit } from "../../../auth/perms";
@@ -65,6 +65,24 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
     document.body.appendChild(a);
     a.click();
     a.remove();
+  };
+  const downloadFromUrl = async (absoluteUrl: string, filename: string) => {
+    // Avoid cross-origin preflight by not sending Authorization headers here.
+    // Slide deck preview/download is served without auth.
+    const res = await fetch(absoluteUrl, { method: "GET" });
+    if (!res.ok) throw new Error(`download_failed_${res.status}`);
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+    try {
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(objUrl), 5_000);
+    }
   };
   const downloadHtml = (html: string, filename: string) => {
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
@@ -426,7 +444,11 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                   if (deckUrl) {
                     const dl = new URL(deckUrl);
                     dl.searchParams.set("download", "1");
-                    openDownload(dl.toString(), `slides-${eventoId}.html`);
+                    try {
+                      await downloadFromUrl(dl.toString(), `slides-${eventoId}.html`);
+                    } catch {
+                      openDownload(dl.toString(), `slides-${eventoId}.html`);
+                    }
                   } else if (res?.previewHtml) {
                     downloadHtml(res.previewHtml, `slides-${eventoId}.html`);
                   }
@@ -469,7 +491,13 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                       if (!deckUrl) return;
                       const dl = new URL(deckUrl);
                       dl.searchParams.set("download", "1");
-                      openDownload(dl.toString(), `slides-${d.id}.html`);
+                      void (async () => {
+                        try {
+                          await downloadFromUrl(dl.toString(), `slides-${d.id}.html`);
+                        } catch {
+                          openDownload(dl.toString(), `slides-${d.id}.html`);
+                        }
+                      })();
                     }}
                     style={{ fontSize: 11, padding: "6px 10px", flexShrink: 0 }}
                   >
