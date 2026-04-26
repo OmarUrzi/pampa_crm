@@ -164,7 +164,20 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         messages: [{ role: "user", content: user }],
         model: process.env.CLAUDE_MODEL ?? "claude-sonnet-4-6",
       });
-      deck = JSON.parse(txt) as EventoDeck;
+      try {
+        deck = JSON.parse(txt) as EventoDeck;
+      } catch {
+        // eslint-disable-next-line no-console
+        console.warn("[slidesEvento] Claude JSON parse error", {
+          eventoId: body.eventoId,
+          upstreamSnippet: String(txt ?? "").slice(0, 2000),
+        });
+        return reply.code(502).send({
+          error: "ai_parse_error",
+          message: "Claude devolvió un JSON inválido.",
+          upstreamBodySnippet: String(txt ?? "").slice(0, 2000),
+        });
+      }
     } catch (e) {
       if (e instanceof AiUpstreamError) {
         return reply.code(502).send({
@@ -175,6 +188,8 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
           bodySnippet: e.bodySnippet,
         });
       }
+      // eslint-disable-next-line no-console
+      console.warn("[slidesEvento] Claude call failed", { eventoId: body.eventoId });
       return reply.code(502).send({ error: "ai_parse_error", message: "Claude devolvió un JSON inválido." });
     }
 
