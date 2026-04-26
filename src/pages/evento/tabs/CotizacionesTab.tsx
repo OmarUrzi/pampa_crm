@@ -66,10 +66,25 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
     a.click();
     a.remove();
   };
+  const hardNavigateToDownload = (absoluteUrl: string) => {
+    // Last-resort escape hatch: if CORS blocks fetch/blob downloads and the browser
+    // ignores cross-origin a[download], navigate directly to the download endpoint.
+    // This should trigger a normal file download in the current tab.
+    window.location.href = absoluteUrl;
+  };
   const downloadFromUrl = async (absoluteUrl: string, filename: string) => {
     // Avoid cross-origin preflight by not sending Authorization headers here.
     // Slide deck preview/download is served without auth.
+    // eslint-disable-next-line no-console
+    console.info("[slides] downloading deck", { absoluteUrl, filename });
     const res = await fetch(absoluteUrl, { method: "GET" });
+    // eslint-disable-next-line no-console
+    console.info("[slides] download response", {
+      ok: res.ok,
+      status: res.status,
+      contentType: res.headers.get("content-type"),
+      contentDisposition: res.headers.get("content-disposition"),
+    });
     if (!res.ok) throw new Error(`download_failed_${res.status}`);
     const blob = await res.blob();
     const objUrl = URL.createObjectURL(blob);
@@ -447,7 +462,11 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                     try {
                       await downloadFromUrl(dl.toString(), `slides-${eventoId}.html`);
                     } catch {
-                      openDownload(dl.toString(), `slides-${eventoId}.html`);
+                      try {
+                        openDownload(dl.toString(), `slides-${eventoId}.html`);
+                      } catch {
+                        hardNavigateToDownload(dl.toString());
+                      }
                     }
                   } else if (res?.previewHtml) {
                     downloadHtml(res.previewHtml, `slides-${eventoId}.html`);
@@ -495,7 +514,11 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                         try {
                           await downloadFromUrl(dl.toString(), `slides-${d.id}.html`);
                         } catch {
-                          openDownload(dl.toString(), `slides-${d.id}.html`);
+                          try {
+                            openDownload(dl.toString(), `slides-${d.id}.html`);
+                          } catch {
+                            hardNavigateToDownload(dl.toString());
+                          }
                         }
                       })();
                     }}
