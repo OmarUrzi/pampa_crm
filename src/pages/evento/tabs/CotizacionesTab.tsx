@@ -3,7 +3,7 @@ import type { CotizacionVersion, Currency } from "../../../types";
 import { Button } from "../../../ui/ui";
 import { ConfirmModal } from "../../../ui/ConfirmModal";
 import { useAppStore } from "../../../state/useAppStore";
-import { apiFetch } from "../../../api/client";
+import { API_BASE, apiFetch, getToken } from "../../../api/client";
 import { SearchDropdown } from "../../../ui/SearchDropdown";
 import { ProveedorFormModal } from "../../../ui/ProveedorFormModal";
 import { useCanEdit } from "../../../auth/perms";
@@ -49,6 +49,70 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
   const [confirmDelete, setConfirmDelete] = useState<null | { versionId: string; itemId: string }>(null);
   const [slides, setSlides] = useState<SlideDeckListItem[]>([]);
   const [slidesLoading, setSlidesLoading] = useState(false);
+  const toAbsoluteSlidesUrl = (urlOrPath: string) => {
+    const s = String(urlOrPath ?? "").trim();
+    if (!s) return s;
+    if (/^https?:\/\//i.test(s)) return s;
+    if (!s.startsWith("/")) return s;
+    return `${API_BASE}${s}`;
+  };
+  const openDownload = (absoluteUrl: string, filename: string) => {
+    const a = document.createElement("a");
+    a.href = absoluteUrl;
+    a.download = filename;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+  const hardNavigateToDownload = (absoluteUrl: string) => {
+    // Last-resort escape hatch: if CORS blocks fetch/blob downloads and the browser
+    // ignores cross-origin a[download], navigate directly to the download endpoint.
+    // This should trigger a normal file download in the current tab.
+    window.location.href = absoluteUrl;
+  };
+  const downloadFromUrl = async (absoluteUrl: string, filename: string) => {
+    // Avoid cross-origin preflight by not sending Authorization headers here.
+    // Slide deck preview/download is served without auth.
+    // eslint-disable-next-line no-console
+    console.info("[slides] downloading deck", { absoluteUrl, filename });
+    const res = await fetch(absoluteUrl, { method: "GET" });
+    // eslint-disable-next-line no-console
+    console.info("[slides] download response", {
+      ok: res.ok,
+      status: res.status,
+      contentType: res.headers.get("content-type"),
+      contentDisposition: res.headers.get("content-disposition"),
+    });
+    if (!res.ok) throw new Error(`download_failed_${res.status}`);
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+    try {
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(objUrl), 5_000);
+    }
+  };
+  const downloadHtml = (html: string, filename: string) => {
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const objUrl = URL.createObjectURL(blob);
+    try {
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(objUrl), 5_000);
+    }
+  };
 
   const active = useMemo<CotizacionVersion | null>(() => {
     if (!activeVersionId) return null;
@@ -381,7 +445,7 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
               type="button"
               onClick={async () => {
                 await gate.run(async () => {
-                  const res = await apiFetch<{ url?: string }>("/slides/generate-from-evento", {
+                  const res = await apiFetch<{ url?: string; previewHtml?: string }>("/slides/generate-from-evento", {
                     method: "POST",
                     body: JSON.stringify({
                       eventoId,
@@ -391,8 +455,22 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                     // Claude puede demorar; evitamos abortar el request por timeout del cliente.
                     timeoutMs: 210_000,
                   } as any);
-                  const url = res?.url ?? "https://docs.google.com/presentation/d/FAKE_DECK_ID/edit";
-                  window.open(url, "_blank", "noopener,noreferrer");
+                  const deckUrl = toAbsoluteSlidesUrl(res?.url ?? "");
+                  if (deckUrl) {
+                    const dl = new URL(deckUrl);
+                    dl.searchParams.set("download", "1");
+                    try {
+                      await downloadFromUrl(dl.toString(), `slides-${eventoId}.html`);
+                    } catch {
+                      try {
+                        openDownload(dl.toString(), `slides-${eventoId}.html`);
+                      } catch {
+                        hardNavigateToDownload(dl.toString());
+                      }
+                    }
+                  } else if (res?.previewHtml) {
+                    downloadHtml(res.previewHtml, `slides-${eventoId}.html`);
+                  }
                   try {
                     const list = await apiListSlidesForEvento(eventoId);
                     setSlides((list?.decks ?? []) as SlideDeckListItem[]);
@@ -427,10 +505,26 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                   </div>
                   <Button
                     type="button"
-                    onClick={() => window.open(d.url, "_blank", "noopener,noreferrer")}
+                    onClick={() => {
+                      const deckUrl = toAbsoluteSlidesUrl((d as any).url ?? "");
+                      if (!deckUrl) return;
+                      const dl = new URL(deckUrl);
+                      dl.searchParams.set("download", "1");
+                      void (async () => {
+                        try {
+                          await downloadFromUrl(dl.toString(), `slides-${d.id}.html`);
+                        } catch {
+                          try {
+                            openDownload(dl.toString(), `slides-${d.id}.html`);
+                          } catch {
+                            hardNavigateToDownload(dl.toString());
+                          }
+                        }
+                      })();
+                    }}
                     style={{ fontSize: 11, padding: "6px 10px", flexShrink: 0 }}
                   >
-                    Ver ↗
+                    Descargar ↗
                   </Button>
                 </div>
               ))

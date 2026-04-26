@@ -4,6 +4,9 @@ import { useAppStore } from "../../state/useAppStore";
 import { useAuthStore } from "../../state/useAuthStore";
 import { useEffect, useState } from "react";
 
+declare const __APP_VERSION__: string;
+declare const __APP_COMMIT__: string;
+
 function useDarkMode() {
   const [dark, setDark] = useState(() => {
     return localStorage.getItem("theme") === "dark";
@@ -177,6 +180,10 @@ export function Sidebar() {
             </button>
           </div>
         )}
+
+        <div className={styles.buildInfo} title={`build ${__APP_VERSION__} (${__APP_COMMIT__})`}>
+          {__APP_VERSION__} · {__APP_COMMIT__}
+        </div>
       </div>
     </div>
   );

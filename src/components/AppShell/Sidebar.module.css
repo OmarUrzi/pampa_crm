@@ -199,6 +199,14 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
+.buildInfo {
+  margin-top: 10px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .avatar {
   width: 22px;
   height: 22px;

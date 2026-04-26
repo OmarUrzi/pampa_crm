@@ -168,9 +168,16 @@ export async function registerSlidesRoutes(app: FastifyInstance) {
   // View stored deck as HTML (simple renderer).
   app.get("/slides/decks/:id", async (req, reply) => {
     const id = (req.params as { id: string }).id;
+    const q = (req.query as any) ?? {};
     const row = await prisma.slideDeck.findUnique({ where: { id }, select: { deckJson: true, deletedAt: true } });
     if (!row || row.deletedAt) return reply.code(404).send({ error: "not_found" });
     const html = renderDeckHtml(row.deckJson as any);
+    const wantsDownload = q.download === "1" || q.download === 1 || q.download === true || q.download === "true";
+    if (wantsDownload) {
+      reply.header("content-disposition", `attachment; filename="slides-${id}.html"`);
+      reply.header("content-type", "application/octet-stream");
+      return reply.send(html);
+    }
     reply.header("content-type", "text/html; charset=utf-8");
     return reply.send(html);
   });

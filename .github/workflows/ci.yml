@@ -71,8 +71,30 @@ jobs:
 
       - name: Wait for services
         run: |
-          node -e "fetch('http://localhost:8787/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
-          node -e "fetch('http://localhost:5173').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+          node - <<'NODE'
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          async function waitFor(url, label, attempts = 40, delayMs = 1500) {
+            let lastErr = null;
+            for (let i = 0; i < attempts; i++) {
+              try {
+                const res = await fetch(url);
+                if (res.ok) {
+                  console.log(`[wait] ${label} ok (${res.status})`);
+                  return;
+                }
+                lastErr = new Error(`${label} status ${res.status}`);
+              } catch (e) {
+                lastErr = e;
+              }
+              console.log(`[wait] ${label} not ready yet (${i + 1}/${attempts})`);
+              await sleep(delayMs);
+            }
+            console.error(`[wait] ${label} failed:`, lastErr?.message ?? lastErr);
+            process.exit(1);
+          }
+          await waitFor('http://localhost:8787/health', 'backend');
+          await waitFor('http://localhost:5173', 'frontend');
+          NODE
 
       - name: E2E tests
         env:
