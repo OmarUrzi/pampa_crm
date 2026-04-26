@@ -45,12 +45,22 @@ export async function registerEventoRoutes(app: FastifyInstance) {
     const ev = await prisma.evento.findUnique({ where: { id } });
     if (!ev || ev.deletedAt) return reply.code(404).send({ error: "not_found" });
 
-    const decks = await prisma.slideDeck.findMany({
-      where: { eventoId: id, deletedAt: null },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-      select: { id: true, source: true, title: true, provider: true, createdAt: true },
-    });
+    let decks: Array<{ id: string; source: string; title: string | null; provider: string | null; createdAt: Date }> = [];
+    try {
+      decks = await prisma.slideDeck.findMany({
+        where: { eventoId: id, deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: { id: true, source: true, title: true, provider: true, createdAt: true },
+      });
+    } catch (e: any) {
+      // If migrations haven't been applied yet in this environment, don't break the whole UI.
+      const msg = String(e?.message ?? "");
+      if (msg.includes("SlideDeck") && (msg.includes("does not exist") || msg.includes("table"))) {
+        return reply.send({ decks: [], warning: "slides_not_migrated" });
+      }
+      throw e;
+    }
 
     return { decks };
   });
