@@ -115,8 +115,14 @@ export async function registerAgenciaRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: "invalid_kind" });
     }
 
+    // Ensure an agency profile exists (assets require `agencyId`).
+    const agency =
+      (await prisma.agencyProfile.findFirst({ where: { deletedAt: null }, select: { id: true } })) ??
+      (await prisma.agencyProfile.create({ data: { name: "Agencia" }, select: { id: true } }));
+
     const asset = await prisma.agencyAsset.create({
       data: {
+        agencyId: agency.id,
         kind,
         label,
         filename,
