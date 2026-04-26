@@ -25,6 +25,7 @@ const KIND_LABEL: Record<string, string> = {
   logo_square: "Logo (cuadrado)",
   logo_wide: "Logo (horizontal)",
   photo: "Foto",
+  pptx_guide: "Guía (PPTX base)",
 };
 
 function assetBlobUrl(assetId: string) {
@@ -43,7 +44,7 @@ export function AdminAgenciaPage() {
   const [uploading, setUploading] = useState(false);
   const [assets, setAssets] = useState<AgenciaAsset[]>([]);
   const [confirmDel, setConfirmDel] = useState<AgenciaAsset | null>(null);
-  const [kind, setKind] = useState<"logo_square" | "logo_wide" | "photo">("logo_wide");
+  const [kind, setKind] = useState<"logo_square" | "logo_wide" | "photo" | "pptx_guide">("logo_wide");
   const [label, setLabel] = useState("");
   const [file, setFile] = useState<File | null>(null);
 

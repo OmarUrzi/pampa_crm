@@ -381,7 +381,7 @@ model AgencyProfile {
 model AgencyAsset {
   id        String   @id @default(cuid())
   agencyId  String
-  kind      String   // "logo_square" | "logo_wide" | "photo" | "doc" | etc
+  kind      String   // "logo_square" | "logo_wide" | "photo" | "pptx_guide" | etc
   label     String?
   url       String?
   bytes     Bytes?
