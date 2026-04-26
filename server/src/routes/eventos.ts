@@ -62,7 +62,12 @@ export async function registerEventoRoutes(app: FastifyInstance) {
       throw e;
     }
 
-    return { decks };
+    return {
+      decks: decks.map((d) => ({
+        ...d,
+        url: `/slides/decks/${d.id}`,
+      })),
+    };
   });
 
   // Gmail-derived communications for an event, matched by known contact emails.

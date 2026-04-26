@@ -388,7 +388,7 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
               type="button"
               onClick={async () => {
                 await gate.run(async () => {
-                  const res = await apiFetch<{ url?: string }>("/slides/generate-from-evento", {
+                  const res = await apiFetch<{ url?: string; previewHtml?: string }>("/slides/generate-from-evento", {
                     method: "POST",
                     body: JSON.stringify({
                       eventoId,
@@ -399,7 +399,16 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                     timeoutMs: 210_000,
                   } as any);
                   const url = toAbsoluteSlidesUrl(res?.url ?? "");
-                  if (url) window.open(url, "_blank", "noopener,noreferrer");
+                  if (url) {
+                    window.open(url, "_blank", "noopener,noreferrer");
+                  } else if (res?.previewHtml) {
+                    const win = window.open("", "_blank", "noopener,noreferrer");
+                    if (win) {
+                      win.document.open();
+                      win.document.write(res.previewHtml);
+                      win.document.close();
+                    }
+                  }
                   try {
                     const list = await apiListSlidesForEvento(eventoId);
                     setSlides((list?.decks ?? []) as SlideDeckListItem[]);
