@@ -19,7 +19,7 @@ function escapeHtml(x: string) {
   return x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function renderDeckHtml(deck: Deck) {
+export function renderDeckHtml(deck: Deck) {
   const title = escapeHtml(deck.title ?? "Slides");
   const slides = (deck.slides ?? []).map((s, idx) => {
     const n = idx + 1;

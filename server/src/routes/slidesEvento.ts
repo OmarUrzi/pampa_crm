@@ -5,6 +5,7 @@ import { jwtVerifyGuard } from "../auth/jwtGuards.js";
 import { requireWriteAccess } from "../auth/roleGuards.js";
 import { callAnthropicClaude, getAiProviderKey, AiUpstreamError } from "../services/aiProviders.js";
 import { env } from "../config.js";
+import { renderDeckHtml } from "./slides.js";
 
 type EventoDeck = {
   title: string;
@@ -272,18 +273,43 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       if (preferred) deck.logo = { variant: logoWide?.blobUrl ? "wide" : "square", url: preferred };
     }
 
-    const row = await prisma.slideDeck.create({
-      data: {
-        eventoId: evento.id,
-        source: "evento",
-        title: deck.title ?? null,
-        prompt: body.prompt,
-        provider: "anthropic",
-        deckJson: deck as any,
-      },
+    // Always log what Claude returned (to avoid losing paid output).
+    // eslint-disable-next-line no-console
+    console.info("[slidesEvento] Claude deck (parsed)", {
+      eventoId: body.eventoId,
+      deckTitle: deck.title ?? null,
+      slidesCount: Array.isArray(deck.slides) ? deck.slides.length : null,
+      reqId: (req as any).id ?? null,
     });
 
-    return reply.send({ ok: true, provider: "anthropic", deckId: row.id, url: `/slides/decks/${row.id}` });
+    try {
+      const row = await prisma.slideDeck.create({
+        data: {
+          eventoId: evento.id,
+          source: "evento",
+          title: deck.title ?? null,
+          prompt: body.prompt,
+          provider: "anthropic",
+          deckJson: deck as any,
+        },
+      });
+      return reply.send({ ok: true, provider: "anthropic", deckId: row.id, url: `/slides/decks/${row.id}` });
+    } catch (e: any) {
+      // DB failures (eg. migrations not applied) should not discard the Claude result.
+      // eslint-disable-next-line no-console
+      console.warn("[slidesEvento] Failed to persist SlideDeck; returning deck inline", {
+        eventoId: body.eventoId,
+        code: e?.code ?? null,
+        message: String(e?.message ?? "").slice(0, 500),
+      });
+      return reply.code(200).send({
+        ok: true,
+        provider: "anthropic",
+        warning: "deck_not_persisted",
+        deck,
+        previewHtml: renderDeckHtml(deck as any),
+      });
+    }
   });
 }
 
