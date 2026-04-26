@@ -359,12 +359,12 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
               type="button"
               onClick={async () => {
                 await gate.run(async () => {
-                  const res = await apiFetch<{ url?: string }>("/slides/generate", {
+                  const res = await apiFetch<{ url?: string }>("/slides/generate-from-evento", {
                     method: "POST",
                     body: JSON.stringify({
                       eventoId,
                       prompt:
-                        "Generá slides de Google Slides para este evento con actividades outdoor y gala de cierre.",
+                        "Generá una presentación (cotización) basada en la cotización actual del evento. Incluí precio por ítem, descripciones y fotos del catálogo cuando existan. Usá el logo de la agencia en la portada si está disponible.",
                     }),
                   });
                   const url = res?.url ?? "https://docs.google.com/presentation/d/FAKE_DECK_ID/edit";

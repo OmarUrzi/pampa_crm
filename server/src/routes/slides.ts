@@ -101,7 +101,7 @@ async function generateDeckWithClaude(input: { prompt: string; actividades: any[
     apiKey,
     system,
     messages: [{ role: "user", content: user }],
-    model: process.env.CLAUDE_MODEL ?? "claude-3-5-sonnet-latest",
+    model: process.env.CLAUDE_MODEL ?? "claude-sonnet-4-6",
   });
 
   let json: any;

@@ -162,7 +162,7 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         apiKey,
         system,
         messages: [{ role: "user", content: user }],
-        model: process.env.CLAUDE_MODEL ?? "claude-3-5-sonnet-latest",
+        model: process.env.CLAUDE_MODEL ?? "claude-sonnet-4-6",
       });
       deck = JSON.parse(txt) as EventoDeck;
     } catch (e) {
