@@ -28,6 +28,14 @@ const KIND_LABEL: Record<string, string> = {
   pptx_guide: "Guía (PPTX base)",
 };
 
+function isPreviewableImage(a: AgenciaAsset) {
+  const mime = String(a.mime ?? "").toLowerCase();
+  if (mime.startsWith("image/")) return true;
+  const fn = String(a.filename ?? "").toLowerCase();
+  if (fn.endsWith(".png") || fn.endsWith(".jpg") || fn.endsWith(".jpeg") || fn.endsWith(".webp") || fn.endsWith(".gif")) return true;
+  return false;
+}
+
 function assetBlobUrl(assetId: string) {
   const token = getToken();
   const q = token ? `?token=${encodeURIComponent(token)}` : "";
@@ -203,6 +211,7 @@ export function AdminAgenciaPage() {
                 <option value="logo_wide">{KIND_LABEL.logo_wide}</option>
                 <option value="logo_square">{KIND_LABEL.logo_square}</option>
                 <option value="photo">{KIND_LABEL.photo}</option>
+                <option value="pptx_guide">{KIND_LABEL.pptx_guide}</option>
               </select>
             </div>
             <div>
@@ -211,7 +220,12 @@ export function AdminAgenciaPage() {
             </div>
             <div>
               <label style={labelStyle}>Archivo</label>
-              <input type="file" accept="image/*" onChange={(e) => setFile((e.target.files?.[0] as any) ?? null)} style={inputStyle} />
+              <input
+                type="file"
+                accept={kind === "pptx_guide" ? ".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" : "image/*"}
+                onChange={(e) => setFile((e.target.files?.[0] as any) ?? null)}
+                style={inputStyle}
+              />
             </div>
           </div>
 
@@ -243,10 +257,15 @@ export function AdminAgenciaPage() {
           <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
             {(assets ?? []).map((a) => {
               const url = a.bytes ? assetBlobUrl(a.id) : a.url ?? "";
+              const canPreview = Boolean(url) && isPreviewableImage(a);
               return (
                 <div key={a.id} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, overflow: "hidden" }}>
                   <div style={{ height: 110, background: "var(--color-background-secondary)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {url ? <img src={url} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /> : <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>sin preview</span>}
+                    {canPreview ? (
+                      <img src={url} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                    ) : (
+                      <span style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{url ? "sin preview" : "sin preview"}</span>
+                    )}
                   </div>
                   <div style={{ padding: 10, display: "grid", gap: 6 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
