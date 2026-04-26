@@ -389,7 +389,7 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                         "Generá una presentación (cotización) basada en la cotización actual del evento. Incluí precio por ítem, descripciones y fotos del catálogo cuando existan. Usá el logo de la agencia en la portada si está disponible.",
                     }),
                     // Claude puede demorar; evitamos abortar el request por timeout del cliente.
-                    timeoutMs: 180_000,
+                    timeoutMs: 210_000,
                   } as any);
                   const url = res?.url ?? "https://docs.google.com/presentation/d/FAKE_DECK_ID/edit";
                   window.open(url, "_blank", "noopener,noreferrer");
