@@ -71,7 +71,7 @@ export async function callAnthropicClaude(input: {
   system?: string;
   model?: string;
 }): Promise<string> {
-  const model = input.model ?? "claude-3-5-sonnet-latest";
+  const model = input.model ?? process.env.CLAUDE_MODEL ?? "claude-sonnet-4-6";
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
