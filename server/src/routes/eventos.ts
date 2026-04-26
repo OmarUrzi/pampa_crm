@@ -66,6 +66,7 @@ export async function registerEventoRoutes(app: FastifyInstance) {
       decks: decks.map((d) => ({
         ...d,
         url: `/slides/decks/${d.id}`,
+        pptxUrl: `/slides/decks/${d.id}/pptx`,
       })),
     };
   });

@@ -99,6 +99,20 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
       setTimeout(() => URL.revokeObjectURL(objUrl), 5_000);
     }
   };
+  const toPptxUrl = (deckUrlOrPath: string) => {
+    // Accept old `/slides/decks/:id` and new `/slides/decks/:id/pptx`
+    const abs = toAbsoluteSlidesUrl(deckUrlOrPath);
+    if (!abs) return abs;
+    try {
+      const u = new URL(abs);
+      if (u.pathname.endsWith("/pptx")) return u.toString();
+      u.pathname = u.pathname.replace(/\/+$/, "");
+      if (!u.pathname.endsWith("/pptx")) u.pathname = `${u.pathname}/pptx`;
+      return u.toString();
+    } catch {
+      return abs.endsWith("/pptx") ? abs : `${abs.replace(/\/+$/, "")}/pptx`;
+    }
+  };
   const downloadHtml = (html: string, filename: string) => {
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const objUrl = URL.createObjectURL(blob);
@@ -455,20 +469,19 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                     // Claude puede demorar; evitamos abortar el request por timeout del cliente.
                     timeoutMs: 210_000,
                   } as any);
-                  const deckUrl = toAbsoluteSlidesUrl(res?.url ?? "");
+                  const deckUrl = toPptxUrl(res?.url ?? "");
                   if (deckUrl) {
-                    const dl = new URL(deckUrl);
-                    dl.searchParams.set("download", "1");
                     try {
-                      await downloadFromUrl(dl.toString(), `slides-${eventoId}.html`);
+                      await downloadFromUrl(deckUrl, `slides-${eventoId}.pptx`);
                     } catch {
                       try {
-                        openDownload(dl.toString(), `slides-${eventoId}.html`);
+                        openDownload(deckUrl, `slides-${eventoId}.pptx`);
                       } catch {
-                        hardNavigateToDownload(dl.toString());
+                        hardNavigateToDownload(deckUrl);
                       }
                     }
                   } else if (res?.previewHtml) {
+                    // Fallback: if deck isn't persisted we only have HTML for now.
                     downloadHtml(res.previewHtml, `slides-${eventoId}.html`);
                   }
                   try {
@@ -506,25 +519,23 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                   <Button
                     type="button"
                     onClick={() => {
-                      const deckUrl = toAbsoluteSlidesUrl((d as any).url ?? "");
+                      const deckUrl = toPptxUrl((d as any).url ?? "");
                       if (!deckUrl) return;
-                      const dl = new URL(deckUrl);
-                      dl.searchParams.set("download", "1");
                       void (async () => {
                         try {
-                          await downloadFromUrl(dl.toString(), `slides-${d.id}.html`);
+                          await downloadFromUrl(deckUrl, `slides-${d.id}.pptx`);
                         } catch {
                           try {
-                            openDownload(dl.toString(), `slides-${d.id}.html`);
+                            openDownload(deckUrl, `slides-${d.id}.pptx`);
                           } catch {
-                            hardNavigateToDownload(dl.toString());
+                            hardNavigateToDownload(deckUrl);
                           }
                         }
                       })();
                     }}
                     style={{ fontSize: 11, padding: "6px 10px", flexShrink: 0 }}
                   >
-                    Descargar ↗
+                    Descargar PPTX ↗
                   </Button>
                 </div>
               ))

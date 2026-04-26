@@ -4,6 +4,7 @@ import { prisma } from "../prisma.js";
 import { jwtVerifyGuard } from "../auth/jwtGuards.js";
 import { requireWriteAccess } from "../auth/roleGuards.js";
 import { getAiProviderKey, callAnthropicClaude, AiUpstreamError } from "../services/aiProviders.js";
+import { deckToPptxBuffer } from "../services/pptxDeck.js";
 
 type Deck = {
   title: string;
@@ -180,6 +181,18 @@ export async function registerSlidesRoutes(app: FastifyInstance) {
     }
     reply.header("content-type", "text/html; charset=utf-8");
     return reply.send(html);
+  });
+
+  // Download stored deck as PPTX.
+  app.get("/slides/decks/:id/pptx", async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const row = await prisma.slideDeck.findUnique({ where: { id }, select: { deckJson: true, deletedAt: true } });
+    if (!row || row.deletedAt) return reply.code(404).send({ error: "not_found" });
+    const deck = row.deckJson as any;
+    const buf = await deckToPptxBuffer(deck);
+    reply.header("content-disposition", `attachment; filename="slides-${id}.pptx"`);
+    reply.header("content-type", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+    return reply.send(buf);
   });
 }
 
