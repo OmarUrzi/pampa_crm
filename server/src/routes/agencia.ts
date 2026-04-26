@@ -111,7 +111,7 @@ export async function registerAgenciaRoutes(app: FastifyInstance) {
 
     if (!bytes) return reply.code(400).send({ error: "file_required" });
     if (!kind) return reply.code(400).send({ error: "kind_required" });
-    if (kind !== "logo_square" && kind !== "logo_wide" && kind !== "photo") {
+    if (kind !== "logo_square" && kind !== "logo_wide" && kind !== "photo" && kind !== "pptx_guide") {
       return reply.code(400).send({ error: "invalid_kind" });
     }
 
