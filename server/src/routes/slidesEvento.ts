@@ -24,19 +24,58 @@ type EventoDeck = {
   >;
 };
 
-function tryParseDeckJson(raw: string): { ok: true; deck: EventoDeck } | { ok: false } {
+function redactTokens(input: string) {
+  // Avoid logging JWTs (Authorization query tokens) in server logs / API responses.
+  return String(input ?? "").replace(/([?&]token=)[^&\s"]+/gi, "$1[REDACTED]");
+}
+
+function extractFirstJsonObject(raw: string): string | null {
+  const s = String(raw ?? "");
+  const start = s.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i]!;
+    if (inStr) {
+      if (esc) {
+        esc = false;
+        continue;
+      }
+      if (ch === "\\") {
+        esc = true;
+        continue;
+      }
+      if (ch === "\"") {
+        inStr = false;
+        continue;
+      }
+      continue;
+    }
+    if (ch === "\"") {
+      inStr = true;
+      continue;
+    }
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+function tryParseDeckJson(raw: string): { ok: true; deck: EventoDeck; usedExtraction?: boolean } | { ok: false } {
   const txt = String(raw ?? "").trim();
   if (!txt) return { ok: false };
   try {
     return { ok: true, deck: JSON.parse(txt) as EventoDeck };
   } catch {
-    // Try to salvage the first JSON object if the model prepended/appended text.
-    const a = txt.indexOf("{");
-    const b = txt.lastIndexOf("}");
-    if (a >= 0 && b > a) {
-      const slice = txt.slice(a, b + 1);
+    const extracted = extractFirstJsonObject(txt);
+    if (extracted) {
       try {
-        return { ok: true, deck: JSON.parse(slice) as EventoDeck };
+        return { ok: true, deck: JSON.parse(extracted) as EventoDeck, usedExtraction: true };
       } catch {
         return { ok: false };
       }
@@ -183,6 +222,13 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
 
     let deck: EventoDeck;
     try {
+      // eslint-disable-next-line no-console
+      console.info("[slidesEvento] calling_claude", {
+        eventoId: body.eventoId,
+        model: "claude-sonnet-4-6",
+        systemChars: system.length,
+        userChars: user.length,
+      });
       const txt = await callAnthropicClaude({
         apiKey,
         system,
@@ -194,12 +240,12 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         // eslint-disable-next-line no-console
         console.warn("[slidesEvento] Claude JSON parse error", {
           eventoId: body.eventoId,
-          upstreamSnippet: String(txt ?? "").slice(0, 2000),
+          upstreamSnippet: redactTokens(String(txt ?? "")).slice(0, 2000),
         });
         return reply.code(502).send({
           error: "ai_parse_error",
           message: "Claude devolvió un JSON inválido.",
-          upstreamBodySnippet: String(txt ?? "").slice(0, 2000),
+          upstreamBodySnippet: redactTokens(String(txt ?? "")).slice(0, 8000),
         });
       }
       deck = parsed.deck;
@@ -210,7 +256,7 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
           message: "Error generando slides con Claude.",
           provider: e.provider,
           httpStatus: e.httpStatus,
-          bodySnippet: e.bodySnippet,
+          bodySnippet: redactTokens(e.bodySnippet),
         });
       }
       // eslint-disable-next-line no-console
