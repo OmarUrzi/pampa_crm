@@ -8,7 +8,9 @@ primary_region = "gru"
 [deploy]
   # Be verbose in deploy logs so we can debug failures.
   # Also fail fast with a clear message if DATABASE_URL is missing.
-  release_command = "sh -lc 'set -eux; node -v; npx prisma -v; test -n \"${DATABASE_URL:-}\" || (echo \"DATABASE_URL is missing\" && exit 1); npx prisma migrate deploy'"
+  # NOTE: Fly sometimes fails to fetch release_command logs if the machine exits too quickly.
+  # Keep the machine alive briefly on exit so logs can be collected.
+  release_command = "sh -lc 'set -eux; trap \"ec=$?; echo RELEASE_COMMAND_EXIT=$ec; sleep 20; exit $ec\" EXIT; node -v; npx prisma -v; test -n \"${DATABASE_URL:-}\" || (echo \"DATABASE_URL is missing\" && exit 1); npx prisma migrate deploy'"
   release_command_timeout = "10m"
 
 [processes]
