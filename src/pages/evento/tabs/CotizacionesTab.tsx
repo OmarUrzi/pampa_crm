@@ -8,6 +8,7 @@ import { SearchDropdown } from "../../../ui/SearchDropdown";
 import { ProveedorFormModal } from "../../../ui/ProveedorFormModal";
 import { useCanEdit } from "../../../auth/perms";
 import { useAuthGate } from "../../../auth/useAuthGate";
+import { apiListSlidesForEvento, type SlideDeckListItem } from "../../../api/slides";
 import {
   apiAddCotizacionItem,
   apiCreateCotizacionVersion,
@@ -46,6 +47,8 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
   const [showNewProv, setShowNewProv] = useState(false);
   const [provRowItemId, setProvRowItemId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<null | { versionId: string; itemId: string }>(null);
+  const [slides, setSlides] = useState<SlideDeckListItem[]>([]);
+  const [slidesLoading, setSlidesLoading] = useState(false);
 
   const active = useMemo<CotizacionVersion | null>(() => {
     if (!activeVersionId) return null;
@@ -119,6 +122,25 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
       }
     })();
   }, [eventoId, setCotizacionesForEvento]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setSlidesLoading(true);
+      try {
+        const res = await gate.run(async () => await apiListSlidesForEvento(eventoId));
+        if (!alive) return;
+        setSlides((res?.decks ?? []) as SlideDeckListItem[]);
+      } catch {
+        // ignore
+      } finally {
+        if (alive) setSlidesLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [eventoId, gate]);
 
   useEffect(() => {
     // Si crean un evento nuevo, no hay versiones: dejamos lista una v1 para editar.
@@ -369,12 +391,52 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
                   });
                   const url = res?.url ?? "https://docs.google.com/presentation/d/FAKE_DECK_ID/edit";
                   window.open(url, "_blank", "noopener,noreferrer");
+                  try {
+                    const list = await apiListSlidesForEvento(eventoId);
+                    setSlides((list?.decks ?? []) as SlideDeckListItem[]);
+                  } catch {
+                    // ignore
+                  }
                 });
               }}
               disabled={!canEdit}
             >
               Generar Slides ↗
             </Button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12, border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ padding: "10px 12px", background: "var(--color-background-secondary)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 900 }}>Slides generadas</div>
+            <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{slidesLoading ? "cargando…" : `${slides.length}`}</div>
+          </div>
+          <div style={{ padding: 12, display: "grid", gap: 8 }}>
+            {slides.length ? (
+              slides.slice(0, 8).map((d) => (
+                <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {d.title ?? d.prompt ?? "Slides"}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>
+                      {new Date(d.createdAt).toLocaleString()} · {d.provider ?? "—"}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={() => window.open(d.url, "_blank", "noopener,noreferrer")}
+                    style={{ fontSize: 11, padding: "6px 10px", flexShrink: 0 }}
+                  >
+                    Ver ↗
+                  </Button>
+                </div>
+              ))
+            ) : (
+              <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+                Todavía no hay slides generadas para este evento.
+              </div>
+            )}
           </div>
         </div>
 

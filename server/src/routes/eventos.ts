@@ -39,6 +39,22 @@ export async function registerEventoRoutes(app: FastifyInstance) {
     return { evento };
   });
 
+  // Slide decks generated for this event (history).
+  app.get("/eventos/:id/slides-decks", { preHandler: jwtVerifyGuard }, async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const ev = await prisma.evento.findUnique({ where: { id } });
+    if (!ev || ev.deletedAt) return reply.code(404).send({ error: "not_found" });
+
+    const decks = await prisma.slideDeck.findMany({
+      where: { eventoId: id, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: { id: true, source: true, title: true, provider: true, createdAt: true },
+    });
+
+    return { decks };
+  });
+
   // Gmail-derived communications for an event, matched by known contact emails.
   app.get("/eventos/:id/gmail-comms", { preHandler: jwtVerifyGuard }, async (req, reply) => {
     const id = (req.params as { id: string }).id;
