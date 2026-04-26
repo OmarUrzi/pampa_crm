@@ -4,17 +4,9 @@ primary_region = "gru"
 [build]
   dockerfile = "Dockerfile"
 
-# Aplica migraciones Prisma en cada deploy (p. ej. nuevos valores de enum como AiProvider).
-[deploy]
-  # Be verbose in deploy logs so we can debug failures.
-  # Also fail fast with a clear message if DATABASE_URL is missing.
-  # NOTE: Fly sometimes fails to fetch release_command logs if the machine exits too quickly.
-  # Keep the machine alive briefly on exit so logs can be collected.
-  release_command = "sh -lc 'set -eux; trap \"ec=$?; echo RELEASE_COMMAND_EXIT=$ec; sleep 20; exit $ec\" EXIT; node -v; npx prisma -v; test -n \"${DATABASE_URL:-}\" || (echo \"DATABASE_URL is missing\" && exit 1); npx prisma migrate deploy'"
-  release_command_timeout = "10m"
-
 [processes]
-  app = "node dist/index.js"
+  # Run migrations on boot so logs show in the main app output.
+  app = "sh -lc 'set -eux; node -v; npx prisma -v; test -n \"${DATABASE_URL:-}\" || (echo \"DATABASE_URL is missing\" && exit 1); npx prisma migrate deploy; exec node dist/index.js'"
 
 [http_service]
   internal_port = 8787
