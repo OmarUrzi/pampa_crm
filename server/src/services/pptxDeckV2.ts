@@ -103,6 +103,30 @@ function dataUriFromBytes(bytes: Uint8Array, mime: string) {
   return `data:${mime};base64,${b64}`;
 }
 
+function estimateFittedFontSize(input: { text: string; wIn: number; hIn: number; baseFontSize: number }): number {
+  const text = String(input.text ?? "");
+  const base = Math.max(10, Math.min(72, Number(input.baseFontSize ?? 18)));
+  const wPts = Math.max(1, input.wIn * 72);
+  const hPts = Math.max(1, input.hIn * 72);
+  // Simple heuristic: average character width ~0.55*fontSize; line-height ~1.22*fontSize.
+  // Treat newlines as hard breaks.
+  const paras = text.split("\n");
+  const maxLineCharsAt = (fs: number) => Math.max(1, Math.floor(wPts / (0.55 * fs)));
+  const maxLinesAt = (fs: number) => Math.max(1, Math.floor(hPts / (1.22 * fs)));
+
+  let fs = base;
+  for (let i = 0; i < 18; i++) {
+    const cpl = maxLineCharsAt(fs);
+    const needed = paras.reduce((sum, p) => sum + Math.max(1, Math.ceil(p.length / cpl)), 0);
+    const max = maxLinesAt(fs);
+    if (needed <= max) break;
+    // shrink a bit faster when far off
+    const ratio = Math.min(0.92, Math.max(0.7, max / needed));
+    fs = Math.max(10, Math.floor(fs * ratio));
+  }
+  return fs;
+}
+
 export async function deckV2ToPptxBuffer(deckJson: unknown) {
   const deck = DeckV2Schema.parse(deckJson);
 
@@ -130,19 +154,25 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
 
     for (const el of s.elements) {
       if (el.type === "text") {
+        const fontSize = el.fit
+          ? estimateFittedFontSize({ text: el.text, wIn: el.w, hIn: el.h, baseFontSize: el.fontSize ?? 18 })
+          : (el.fontSize ?? 18);
         slide.addText(el.text, {
           x: el.x,
           y: el.y,
           w: el.w,
           h: el.h,
           fontFace: FONT,
-          fontSize: el.fontSize ?? 18,
+          fontSize,
           bold: el.bold ?? false,
           italic: el.italic ?? false,
           color: safeHex(el.color, COLOR_FG),
           align: el.align ?? "left",
           valign: el.valign ?? "top",
-          // PptxGenJS supports shrink-to-fit via `fit` on some versions; keep as any.
+          // Improve readability defaults.
+          margin: 0.12,
+          lineSpacingMultiple: 1.1,
+          // Some PptxGenJS versions support shrink-to-fit via `fit`; keep as any.
           ...(el.fit ? { fit: "shrink" } : {}),
         } as any);
         continue;
