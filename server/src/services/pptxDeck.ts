@@ -29,7 +29,7 @@ export async function deckToPptxBuffer(deckJson: unknown) {
   const deck = deckJson as EventoDeck;
   // If this deck is already a V2 layout spec, render with the V2 renderer.
   // This keeps backwards-compat for older decks.
-  if ((deck as any)?.version === 2 && Array.isArray((deck as any)?.slides) && Array.isArray((deck as any)?.assets)) {
+  if ((deck as any)?.version === 2 && Array.isArray((deck as any)?.slides)) {
     const { deckV2ToPptxBuffer } = await import("./pptxDeckV2.js");
     return await deckV2ToPptxBuffer(deckJson as any);
   }
