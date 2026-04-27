@@ -271,7 +271,7 @@ export function AdminAgenciaPage() {
                       message?: string;
                     }>(
                       "/admin/agencia/assets/sync-anthropic",
-                      { method: "POST", timeoutMs: 120_000 } as any,
+                      { method: "POST", timeoutMs: 300_000 } as any,
                     );
                     if (res.ok) info(`Sync Claude: ${res.count ?? (res.uploaded?.length ?? 0)} subidos`);
                     else info(`Sync Claude incompleto: ${res.uploaded?.length ?? 0} subidos · falló en ${res.failedAt ?? "?"}`);
@@ -325,7 +325,10 @@ export function AdminAgenciaPage() {
                           void run(async () => {
                             setSyncingId(a.id);
                             try {
-                              await apiFetch(`/admin/agencia/assets/${encodeURIComponent(a.id)}/sync-claude`, { method: "POST" } as any);
+                              await apiFetch(`/admin/agencia/assets/${encodeURIComponent(a.id)}/sync-claude`, {
+                                method: "POST",
+                                timeoutMs: 300_000,
+                              } as any);
                               info("Sincronizado a Claude.");
                               await refresh();
                             } finally {
