@@ -233,13 +233,12 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
     ].join("\n");
 
     const attachments: any[] = [];
-    // Attach PPTX guide and logos/photos if they were synced to Anthropic Files API.
+    // Attach guide/logos/photos if they were synced to Anthropic Files API.
+    // NOTE: Anthropic only supports PDF/plaintext as `document` file sources. We only attach the guide
+    // if the stored file_id corresponds to a supported mime (we store PDF for pptx_guide sync).
     const guide = agencyAssets.find((a) => a.kind === "pptx_guide" && a.anthropicFileId) ?? null;
-    if (guide?.anthropicFileId) {
-      attachments.push({
-        type: "document",
-        source: { type: "file", file_id: guide.anthropicFileId },
-      });
+    if (guide?.anthropicFileId && String(guide.mime ?? "").toLowerCase().includes("pdf")) {
+      attachments.push({ type: "document", source: { type: "file", file_id: guide.anthropicFileId } });
     }
     const logo = (logoWide?.anthropicFileId ? logoWide : logoSquare?.anthropicFileId ? logoSquare : null) as any;
     if (logo?.anthropicFileId) {

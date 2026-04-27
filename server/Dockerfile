@@ -18,7 +18,7 @@ ENV NODE_ENV=production
 # Ensure Node's module resolution matches what we compile for (ESM + extensionless relative imports),
 # even if the platform starts the process as `node dist/index.js` without extra CLI flags.
 ENV NODE_OPTIONS=--experimental-specifier-resolution=node
-RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -y && apt-get install -y openssl ca-certificates libreoffice && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

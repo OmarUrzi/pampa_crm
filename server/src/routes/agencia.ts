@@ -7,6 +7,7 @@ import { auditLog } from "../audit.js";
 import { jwtVerifyHeaderOrQueryToken } from "../services/tokenQueryAuth.js";
 import { uploadFileToAnthropic } from "../services/anthropicFiles.js";
 import { getAiProviderKey } from "../services/aiProviders.js";
+import { pptxBytesToPdfBytes } from "../services/pptxToPdf.js";
 
 export async function registerAgenciaRoutes(app: FastifyInstance) {
   // Public-ish: allow token via query so upstream tools (Claude) can fetch assets.
@@ -105,13 +106,25 @@ export async function registerAgenciaRoutes(app: FastifyInstance) {
     const uploaded: Array<{ id: string; fileId: string }> = [];
     for (const a of assets) {
       try {
+        let bytes = Buffer.from(a.bytes as any);
+        let mime = a.mime ?? "application/octet-stream";
+        let filename = a.filename ?? `agency-${a.kind}-${a.id}`;
+
+        // Anthropic Files API only supports PDF/plaintext as `document`.
+        // Our guide is typically uploaded as PPTX, so convert it to PDF for Claude reuse.
+        if (a.kind === "pptx_guide") {
+          bytes = await pptxBytesToPdfBytes(bytes);
+          mime = "application/pdf";
+          filename = filename.replace(/\.pptx$/i, "") + ".pdf";
+        }
+
         const file = await uploadFileToAnthropic({
           apiKey,
-          filename: a.filename ?? `agency-${a.kind}-${a.id}`,
-          mime: a.mime ?? "application/octet-stream",
-          bytes: Buffer.from(a.bytes as any),
+          filename,
+          mime,
+          bytes,
         });
-        await prisma.agencyAsset.update({ where: { id: a.id }, data: { anthropicFileId: file.id } });
+        await prisma.agencyAsset.update({ where: { id: a.id }, data: { anthropicFileId: file.id, anthropicUploadedAt: new Date() } });
         uploaded.push({ id: a.id, fileId: file.id });
       } catch (e: any) {
         // Stop early; likely rate-limit or auth issue. Return partial progress.
@@ -209,16 +222,25 @@ export async function registerAgenciaRoutes(app: FastifyInstance) {
       const apiKey = await getAiProviderKey("anthropic");
       if (!apiKey) return reply.code(400).send({ error: "anthropic_not_configured" });
 
+      let bytes = Buffer.from(asset.bytes as any);
+      let mime = asset.mime ?? "application/octet-stream";
+      let filename = asset.filename ?? `${asset.kind}-${asset.id}`;
+      if (asset.kind === "pptx_guide") {
+        bytes = await pptxBytesToPdfBytes(bytes);
+        mime = "application/pdf";
+        filename = filename.replace(/\.pptx$/i, "") + ".pdf";
+      }
+
       const uploaded = await uploadFileToAnthropic({
         apiKey,
-        bytes: Buffer.from(asset.bytes as any),
-        filename: asset.filename ?? `${asset.kind}-${asset.id}`,
-        mime: asset.mime ?? "application/octet-stream",
+        bytes,
+        filename,
+        mime,
       });
 
       const updated = await prisma.agencyAsset.update({
         where: { id: assetId },
-        data: { anthropicFileId: uploaded.id },
+        data: { anthropicFileId: uploaded.id, anthropicUploadedAt: new Date() },
         select: { id: true, kind: true, label: true, filename: true, mime: true, sizeBytes: true, createdAt: true, anthropicFileId: true },
       });
 
