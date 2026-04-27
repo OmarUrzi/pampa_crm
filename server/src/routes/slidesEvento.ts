@@ -205,16 +205,36 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
 
     const system = [
       "Sos un asistente que arma presentaciones de cotización para una agencia de eventos.",
+      "Vas a devolver un DECK JSON (no PPTX) que nuestro backend renderiza 1:1 a un archivo .pptx.",
       "Respondé SOLO JSON válido, sin markdown, sin texto extra.",
-      'NO uses la clave "type". Usá SIEMPRE la clave "kind".',
-      'Los valores permitidos para slide.kind son: "title" | "section" | "quote_item" | "closing".',
-      "Escapá saltos de línea dentro de strings como \\n.",
-      "Usá el contexto provisto (agencia, evento, cotización) para estructurar el deck.",
-      "Incluí logo de agencia en la portada si hay assets disponibles.",
-      "Usá como máximo 14 slides.",
-      "Estructura requerida:",
-      '{"title": string, "logo"?: { "variant"?: "square"|"wide", "url"?: string }, "slides": [ ... ] }',
-      'Ejemplo mínimo válido: {"title":"Cotización","slides":[{"kind":"title","title":"...","subtitle":"..."}]}',
+      "IMPORTANTE: devolvé SIEMPRE el formato DECK_V2 (layout spec) con version=2.",
+      "",
+      "DECK_V2:",
+      "- Raíz: { version:2, title:string, theme?:{bg,fg,muted,accent,font}, slides:[...] }",
+      "- Cada slide: { bg?:hex6, elements:[...] }",
+      "- Elementos permitidos:",
+      '  - text: { type:"text", text, x,y,w,h, fontSize?, bold?, italic?, color?, align?, valign?, fit? }',
+      '  - shape: { type:"shape", shape:"rect"|"roundRect"|"line", x,y,w,h, fill?, line?, radius? }',
+      '  - image: { type:"image", src:{ kind:"anthropic_file"|"url", value:string, mime? }, x,y,w,h, fit? }',
+      "",
+      "COORDENADAS:",
+      "- Usamos layout 16:9 (PptxGenJS LAYOUT_WIDE). Unidades en pulgadas.",
+      "- Rango típico: x:[0..13.33], y:[0..7.5].",
+      "",
+      "REGLAS DE DISEÑO (estilo \"Pampa\" moderno):",
+      "- Portada: logo arriba izq, título grande, subtítulo, y una foto hero a la derecha o abajo.",
+      "- Secciones: título + bullets cortos + barra/acento.",
+      "- Ítems cotizados: cards con foto (cover), título, proveedor, pax, precio, bullets; máximo 4 por slide.",
+      "- Jerarquía tipográfica: título 40-52, subtítulos 18-22, cuerpo 14-18.",
+      "- Usá theme oscuro por defecto (bg oscuro, texto claro, accent violeta/azul).",
+      "",
+      "IMÁGENES:",
+      "- Si tenés file_id (Anthropic Files) usá src.kind='anthropic_file' con value=file_id.",
+      "- Si no, usá src.kind='url' con value=url absoluta.",
+      "",
+      "LIMITES:",
+      "- Máximo 14 slides.",
+      "- Texto conciso, bullets cortos. Evitá párrafos largos.",
     ].join("\n");
 
     const attachments: any[] = [];
@@ -279,6 +299,17 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         });
       }
       deck = parsed.deck;
+      // Validate DeckV2 (version=2) strictly. If invalid, treat as parse error.
+      try {
+        if (deck?.version !== 2) throw new Error("deck_not_v2");
+        DeckV2Schema.parse(deck);
+      } catch {
+        return reply.code(502).send({
+          error: "ai_parse_error",
+          message: "Claude devolvió un JSON inválido (Deck v2).",
+          upstreamBodySnippet: redactTokens(String(txt ?? "")).slice(0, 8000),
+        });
+      }
     } catch (e) {
       if (e instanceof AiUpstreamError) {
         return reply.code(502).send({
@@ -294,11 +325,7 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       return reply.code(502).send({ error: "ai_parse_error", message: "Claude devolvió un JSON inválido." });
     }
 
-    // Ensure logo hint if model didn't include it.
-    if (!deck.logo?.url) {
-      const preferred = logoWide?.blobUrl ?? logoSquare?.blobUrl ?? null;
-      if (preferred) deck.logo = { variant: logoWide?.blobUrl ? "wide" : "square", url: preferred };
-    }
+    // For DeckV2, the renderer consumes explicit elements; we don't patch logo into the deck here.
 
     // Always log what Claude returned (to avoid losing paid output).
     // eslint-disable-next-line no-console
@@ -306,6 +333,7 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       eventoId: body.eventoId,
       deckTitle: deck.title ?? null,
       slidesCount: Array.isArray(deck.slides) ? deck.slides.length : null,
+      version: deck?.version ?? null,
       reqId: (req as any).id ?? null,
     });
 
