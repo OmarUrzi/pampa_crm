@@ -147,6 +147,7 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       url: a.url ?? null,
       blobUrl: a.bytes ? apiAbsUrl(`/agencia/assets/${a.id}/blob${tokenQ}`) : null,
       mime: a.mime ?? null,
+      anthropicFileId: a.anthropicFileId ?? null,
     }));
 
     const logoWide = agencyAssets.find((a) => a.kind === "logo_wide" && a.blobUrl) ?? null;
@@ -160,6 +161,10 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         if (f.bytes) return apiAbsUrl(`/catalogo/fotos/${f.id}/blob${tokenQ}`);
         return null;
       }).filter(Boolean);
+      const fotosAnthropicFileIds = (act?.fotos ?? [])
+        .map((f: any) => String(f?.anthropicFileId ?? "").trim())
+        .filter(Boolean)
+        .slice(0, 3);
       return {
         servicio: name,
         proveedor: it.proveedor ?? null,
@@ -168,6 +173,7 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         unit: it.unit ?? null,
         subtotal: typeof it.pax === "number" && typeof it.unit === "number" ? it.pax * it.unit : null,
         fotos,
+        fotosAnthropicFileIds,
         descripcion: act?.descripcion ?? null,
       };
     });
@@ -180,7 +186,14 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
             about: agency.about ?? null,
             contact: agency.contact ?? null,
             website: agency.website ?? null,
-            assets: agencyAssets,
+            assets: agencyAssets.map((a) => ({
+              id: a.id,
+              kind: a.kind,
+              label: a.label,
+              mime: a.mime,
+              blobUrl: a.blobUrl,
+              anthropicFileId: a.anthropicFileId,
+            })),
           }
         : null,
       evento: {
@@ -219,7 +232,36 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       'Ejemplo mínimo válido: {"title":"Cotización","slides":[{"kind":"title","title":"...","subtitle":"..."}]}',
     ].join("\n");
 
-    const user = `CONTEXT_JSON:\n${JSON.stringify(context)}\n\nINSTRUCCION:\n${body.prompt}`;
+    const attachments: any[] = [];
+    // Attach PPTX guide and logos/photos if they were synced to Anthropic Files API.
+    const guide = agencyAssets.find((a) => a.kind === "pptx_guide" && a.anthropicFileId) ?? null;
+    if (guide?.anthropicFileId) {
+      attachments.push({
+        type: "document",
+        source: { type: "file", file_id: guide.anthropicFileId },
+      });
+    }
+    const logo = (logoWide?.anthropicFileId ? logoWide : logoSquare?.anthropicFileId ? logoSquare : null) as any;
+    if (logo?.anthropicFileId) {
+      attachments.push({
+        type: "image",
+        source: { type: "file", file_id: logo.anthropicFileId },
+      });
+    }
+    // Attach up to 8 catalog photos referenced by current quote items.
+    const photoIds = quoteItems.flatMap((qi: any) => (qi.fotosAnthropicFileIds ?? []) as string[]).filter(Boolean).slice(0, 8);
+    for (const fid of photoIds) {
+      attachments.push({ type: "image", source: { type: "file", file_id: fid } });
+    }
+
+    const userText = `CONTEXT_JSON:\n${JSON.stringify(context)}\n\nINSTRUCCION:\n${body.prompt}`;
+    const user = {
+      role: "user" as const,
+      content: [
+        ...(attachments.length ? attachments : []),
+        { type: "text", text: userText },
+      ],
+    };
 
     let deck: EventoDeck;
     try {
@@ -228,14 +270,15 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         eventoId: body.eventoId,
         model: "claude-sonnet-4-6",
         systemChars: system.length,
-        userChars: user.length,
+        userChars: userText.length,
       });
       const txt = await callAnthropicClaude({
         apiKey,
         system,
-        messages: [{ role: "user", content: user }],
+        messages: [user],
         model: "claude-sonnet-4-6",
         maxTokens: 2400,
+        betas: attachments.length ? ["files-api-2025-04-14"] : undefined,
         stopSequences: ["\n\nINSTRUCCION:", "\n\nCONTEXT_JSON:"],
       });
       const parsed = tryParseDeckJson(txt);

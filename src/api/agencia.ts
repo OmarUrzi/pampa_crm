@@ -18,6 +18,7 @@ export type AgenciaAsset = {
   filename: string | null;
   mime: string | null;
   sizeBytes: number | null;
+  anthropicFileId?: string | null;
   createdAt: string;
 };
 
@@ -52,5 +53,11 @@ export async function apiAdminAgenciaUploadAsset(input: { kind: string; label?: 
 
 export async function apiAdminAgenciaDeleteAsset(assetId: string) {
   return await apiFetch<{ ok: boolean }>(`/admin/agencia/assets/${assetId}`, { method: "DELETE" });
+}
+
+export async function apiAdminAgenciaSyncAssetToAnthropic(assetId: string) {
+  return await apiFetch<{ ok: true; fileId: string; already?: boolean }>(`/admin/agencia/assets/${assetId}/sync-anthropic`, {
+    method: "POST",
+  });
 }
 

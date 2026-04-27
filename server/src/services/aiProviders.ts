@@ -67,12 +67,13 @@ export async function callGeminiGenerateContent(input: {
 
 export async function callAnthropicClaude(input: {
   apiKey: string;
-  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  messages: Array<{ role: "user" | "assistant"; content: any }>;
   system?: string;
   model?: string;
   maxTokens?: number;
   temperature?: number;
   stopSequences?: string[];
+  betas?: string[];
 }): Promise<string> {
   const model = input.model ?? process.env.CLAUDE_MODEL ?? "claude-sonnet-4-6";
   const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -88,6 +89,7 @@ export async function callAnthropicClaude(input: {
       temperature: input.temperature ?? 0.2,
       system: input.system ?? undefined,
       messages: input.messages,
+      betas: input.betas ?? undefined,
       stop_sequences: input.stopSequences ?? undefined,
     }),
   });

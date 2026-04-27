@@ -12,6 +12,7 @@ import {
 } from "../api/agencia";
 import { ConfirmModal } from "../ui/ConfirmModal";
 import { API_BASE, getToken } from "../api/client";
+import { apiFetch } from "../api/client";
 
 type Profile = {
   name: string;
@@ -50,6 +51,7 @@ export function AdminAgenciaPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
   const [assets, setAssets] = useState<AgenciaAsset[]>([]);
   const [confirmDel, setConfirmDel] = useState<AgenciaAsset | null>(null);
   const [kind, setKind] = useState<"logo_square" | "logo_wide" | "photo" | "pptx_guide">("logo_wide");
@@ -281,6 +283,31 @@ export function AdminAgenciaPage() {
                     </div>
                     <div style={{ fontSize: 11, color: "var(--color-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {a.label ?? a.filename ?? a.id}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                      <div style={{ fontSize: 10, color: "var(--color-text-secondary)" }}>
+                        {a.anthropicFileId ? "Claude ✓" : "Claude —"}
+                      </div>
+                      <button
+                        type="button"
+                        className={styles.accountBtn}
+                        disabled={!!a.anthropicFileId || syncingId === a.id}
+                        onClick={() => {
+                          void run(async () => {
+                            setSyncingId(a.id);
+                            try {
+                              await apiFetch(`/admin/agencia/assets/${encodeURIComponent(a.id)}/sync-claude`, { method: "POST" } as any);
+                              info("Sincronizado a Claude.");
+                              await refresh();
+                            } finally {
+                              setSyncingId(null);
+                            }
+                          });
+                        }}
+                        style={{ padding: "4px 8px", fontSize: 10 }}
+                      >
+                        {a.anthropicFileId ? "Sincronizado" : syncingId === a.id ? "Sync…" : "Sync Claude"}
+                      </button>
                     </div>
                   </div>
                 </div>

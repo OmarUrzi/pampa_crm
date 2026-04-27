@@ -388,6 +388,8 @@ model AgencyAsset {
   mime      String?
   filename  String?
   sizeBytes Int?
+  anthropicFileId String?
+  anthropicUploadedAt DateTime?
   deletedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -396,6 +398,7 @@ model AgencyAsset {
 
   @@index([agencyId])
   @@index([kind])
+  @@index([anthropicFileId])
   @@index([deletedAt])
 }
 
@@ -436,6 +439,8 @@ model ActividadFoto {
   mime        String?
   filename    String?
   sizeBytes   Int?
+  anthropicFileId String?
+  anthropicUploadedAt DateTime?
   caption     String?
   deletedAt   DateTime?
   createdAt   DateTime @default(now())
@@ -443,6 +448,7 @@ model ActividadFoto {
   actividad ActividadCatalogo @relation(fields: [actividadId], references: [id], onDelete: Cascade)
 
   @@index([actividadId])
+  @@index([anthropicFileId])
 }
 
 model AuditLog {
