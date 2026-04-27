@@ -27,6 +27,12 @@ function safeText(x: unknown) {
 
 export async function deckToPptxBuffer(deckJson: unknown) {
   const deck = deckJson as EventoDeck;
+  // If this deck is already a V2 layout spec, render with the V2 renderer.
+  // This keeps backwards-compat for older decks.
+  if ((deck as any)?.version === 2 && Array.isArray((deck as any)?.slides) && Array.isArray((deck as any)?.assets)) {
+    const { deckV2ToPptxBuffer } = await import("./pptxDeckV2.js");
+    return await deckV2ToPptxBuffer(deckJson as any);
+  }
 
   const PptxGenJS: any = (pptxgen as any)?.default ?? (pptxgen as any);
   const pptx = new PptxGenJS();
