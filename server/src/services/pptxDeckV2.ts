@@ -89,6 +89,25 @@ function safeHex(x: string | undefined, fallback: string) {
   return /^[0-9a-fA-F]{6}$/.test(s) ? s.toUpperCase() : fallback;
 }
 
+const SLIDE_W_IN = 13.333; // PptxGenJS LAYOUT_WIDE width (inches)
+const SLIDE_H_IN = 7.5; // PptxGenJS LAYOUT_WIDE height (inches)
+const MIN_SIZE_IN = 0.05;
+
+function clamp(n: number, min: number, max: number) {
+  if (!Number.isFinite(n)) return min;
+  return Math.min(max, Math.max(min, n));
+}
+
+function clampBox(box: { x: number; y: number; w: number; h: number }) {
+  const x = clamp(box.x, 0, SLIDE_W_IN);
+  const y = clamp(box.y, 0, SLIDE_H_IN);
+  const maxW = Math.max(MIN_SIZE_IN, SLIDE_W_IN - x);
+  const maxH = Math.max(MIN_SIZE_IN, SLIDE_H_IN - y);
+  const w = clamp(box.w, MIN_SIZE_IN, maxW);
+  const h = clamp(box.h, MIN_SIZE_IN, maxH);
+  return { x, y, w, h };
+}
+
 function extFromMime(mime: string | undefined) {
   const m = String(mime ?? "").toLowerCase();
   if (m.includes("png")) return "png";
@@ -154,15 +173,13 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
 
     for (const el of s.elements) {
       if (el.type === "text") {
+        const box = clampBox(el);
         const fontSize = el.fit
-          ? estimateFittedFontSize({ text: el.text, wIn: el.w, hIn: el.h, baseFontSize: el.fontSize ?? 18 })
+          ? estimateFittedFontSize({ text: el.text, wIn: box.w, hIn: box.h, baseFontSize: el.fontSize ?? 18 })
           : (el.fontSize ?? 18);
         slide.addText(el.text, {
-          x: el.x,
-          y: el.y,
-          w: el.w,
-          h: el.h,
-          fontFace: FONT,
+          ...box,
+          ...(FONT ? { fontFace: FONT } : {}),
           fontSize,
           bold: el.bold ?? false,
           italic: el.italic ?? false,
@@ -171,7 +188,7 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
           valign: el.valign ?? "top",
           // Improve readability defaults.
           margin: 0.12,
-          lineSpacingMultiple: 1.1,
+          lineSpacingMultiple: 1.12,
           // Some PptxGenJS versions support shrink-to-fit via `fit`; keep as any.
           ...(el.fit ? { fit: "shrink" } : {}),
         } as any);
@@ -179,6 +196,7 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
       }
 
       if (el.type === "shape") {
+        const box = clampBox(el);
         const shapeType =
           el.shape === "rect"
             ? (pptx.ShapeType.rect as any)
@@ -186,24 +204,22 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
               ? (pptx.ShapeType.roundRect as any)
               : (pptx.ShapeType.line as any);
         slide.addShape(shapeType, {
-          x: el.x,
-          y: el.y,
-          w: el.w,
-          h: el.h,
+          ...box,
           fill: el.fill ? { color: safeHex(el.fill, COLOR_ACCENT) } : undefined,
           line: el.line
             ? {
                 color: el.line.color ? safeHex(el.line.color, COLOR_ACCENT) : safeHex(COLOR_ACCENT, COLOR_ACCENT),
-                width: el.line.width ?? 1,
+                width: clamp(el.line.width ?? 1, 0.25, 10),
               }
             : undefined,
-          radius: el.radius,
+          radius: el.radius != null ? clamp(el.radius, 0, 2) : undefined,
         } as any);
         continue;
       }
 
       // image: embed from Anthropic file_id or URL.
       try {
+        const box = clampBox(el);
         let cacheKey = `${el.src.kind}:${el.src.value}`;
         let cached = imageCache.get(cacheKey);
         if (!cached) {
@@ -217,6 +233,7 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
           } else {
             // URL fetch
             const res = await fetch(el.src.value);
+            if (!res.ok) throw new Error(`image url fetch failed: ${res.status}`);
             const ab = await res.arrayBuffer();
             const mime = res.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
             const data = dataUriFromBytes(new Uint8Array(ab), mime);
@@ -227,26 +244,22 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
 
         slide.addImage({
           data: cached.data,
-          x: el.x,
-          y: el.y,
-          w: el.w,
-          h: el.h,
-          sizing: el.fit === "contain" ? { type: "contain", w: el.w, h: el.h } : { type: "crop", w: el.w, h: el.h },
+          ...box,
+          sizing:
+            el.fit === "contain" ? { type: "contain", w: box.w, h: box.h } : { type: "crop", w: box.w, h: box.h },
         } as any);
       } catch {
         // Fallback placeholder
+        const box = clampBox(el);
         slide.addShape(pptx.ShapeType.roundRect as any, {
-          x: el.x,
-          y: el.y,
-          w: el.w,
-          h: el.h,
+          ...box,
           fill: { color: "111A33" },
           line: { color: "2A355D" },
           radius: 0.2,
         } as any);
         slide.addText(
           `IMG (${extFromMime(el.src.mime)})`,
-          { x: el.x, y: el.y + el.h / 2 - 0.2, w: el.w, h: 0.4, color: COLOR_MUTED, align: "center" } as any,
+          { x: box.x, y: box.y + box.h / 2 - 0.2, w: box.w, h: 0.4, color: COLOR_MUTED, align: "center" } as any,
         );
       }
     }
