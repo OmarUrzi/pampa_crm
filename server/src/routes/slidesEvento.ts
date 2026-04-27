@@ -302,7 +302,7 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
           system,
           messages: [user],
           model: "claude-sonnet-4-6",
-          maxTokens: 2400,
+          maxTokens: 6000,
           betas: attachments.length ? ["files-api-2025-04-14"] : undefined,
           stopSequences: ["\n\nINSTRUCCION:", "\n\nCONTEXT_JSON:"],
         });
