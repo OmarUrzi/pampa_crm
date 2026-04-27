@@ -222,6 +222,8 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       '  - text: { type:"text", text, x,y,w,h, fontSize?, bold?, italic?, color?, align?, valign?, fit? }',
       '  - shape: { type:"shape", shape:"rect"|"roundRect"|"line", x,y,w,h, fill?, line?, radius? }',
       '  - image: { type:"image", src:{ kind:"anthropic_file"|"url", value:string, mime? }, x,y,w,h, fit? }',
+      '  - sectionHeader: { type:"sectionHeader", title, subtitle?, x,y,w,h }  // renderer genera estilo consistente',
+      '  - card: { type:"card", x,y,w,h, title, subtitle?, bullets?, priceLabel?, image? } // renderer genera chrome + layout interno',
       "",
       "COORDENADAS:",
       "- Usamos layout 16:9 (PptxGenJS LAYOUT_WIDE). Unidades en pulgadas.",

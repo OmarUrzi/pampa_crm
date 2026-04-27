@@ -39,6 +39,40 @@ export const DeckV2Schema = z.object({
       elements: z.array(
         z.discriminatedUnion("type", [
           z.object({
+            type: z.literal("sectionHeader"),
+            title: z.string().min(1),
+            subtitle: z.string().optional(),
+            x: z.number(),
+            y: z.number(),
+            w: z.number(),
+            h: z.number(),
+            accent: z.boolean().optional(),
+          }),
+          z.object({
+            type: z.literal("card"),
+            x: z.number(),
+            y: z.number(),
+            w: z.number(),
+            h: z.number(),
+            radius: z.number().optional(),
+            bg: z.string().optional(),
+            shadow: z.boolean().optional(),
+            image: z
+              .object({
+                src: z.object({
+                  kind: z.enum(["anthropic_file", "url"]),
+                  value: z.string().min(1),
+                  mime: z.string().optional(),
+                }),
+                fit: z.enum(["cover", "contain"]).optional(),
+              })
+              .optional(),
+            title: z.string().optional(),
+            subtitle: z.string().optional(),
+            bullets: z.array(z.string().min(1)).optional(),
+            footerRight: z.string().optional(),
+          }),
+          z.object({
             type: z.literal("text"),
             text: z.string(),
             x: z.number(),
@@ -131,6 +165,35 @@ function dataUriFromBytes(bytes: Uint8Array, mime: string) {
   return `data:${mime};base64,${b64}`;
 }
 
+async function resolveImageDataUri(input: {
+  src: { kind: "anthropic_file" | "url"; value: string; mime?: string };
+  imageCache: Map<string, { mime: string; data: string }>;
+}) {
+  const cacheKey = `${input.src.kind}:${input.src.value}`;
+  const cached = input.imageCache.get(cacheKey);
+  if (cached) return cached;
+
+  if (input.src.kind === "anthropic_file") {
+    const fileId = input.src.value;
+    const hintMime = String(input.src.mime ?? "").trim();
+    const downloaded = await downloadFileFromAnthropic({ fileId });
+    const mime = hintMime || downloaded.mime || "image/png";
+    const data = dataUriFromBytes(new Uint8Array(downloaded.bytes), mime);
+    const resolved = { mime, data };
+    input.imageCache.set(cacheKey, resolved);
+    return resolved;
+  }
+
+  const res = await fetch(input.src.value);
+  if (!res.ok) throw new Error(`image url fetch failed: ${res.status}`);
+  const ab = await res.arrayBuffer();
+  const mime = res.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
+  const data = dataUriFromBytes(new Uint8Array(ab), mime);
+  const resolved = { mime, data };
+  input.imageCache.set(cacheKey, resolved);
+  return resolved;
+}
+
 function estimateFittedFontSize(input: { text: string; wIn: number; hIn: number; baseFontSize: number }): number {
   const text = String(input.text ?? "");
   const base = Math.max(10, Math.min(72, Number(input.baseFontSize ?? 18)));
@@ -181,6 +244,168 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
     slide.background = { color: safeHex(s.bg, COLOR_BG) };
 
     for (const el of s.elements) {
+      if (el.type === "sectionHeader") {
+        const box = clampBox(el);
+        const padX = 0.25;
+        const titleH = Math.min(0.9, Math.max(0.55, box.h * 0.55));
+        slide.addText(el.title, {
+          x: box.x + padX,
+          y: box.y,
+          w: Math.max(0.5, box.w - padX * 2),
+          h: titleH,
+          ...(FONT ? { fontFace: FONT } : {}),
+          fontSize: 38,
+          bold: true,
+          color: COLOR_FG,
+          valign: "top",
+        } as any);
+        if (el.subtitle) {
+          slide.addText(el.subtitle, {
+            x: box.x + padX,
+            y: box.y + titleH + 0.05,
+            w: Math.max(0.5, box.w - padX * 2),
+            h: Math.max(0.3, box.h - titleH - 0.05),
+            ...(FONT ? { fontFace: FONT } : {}),
+            fontSize: 18,
+            color: COLOR_MUTED,
+            valign: "top",
+          } as any);
+        }
+        if (el.accent ?? true) {
+          slide.addShape(pptx.ShapeType.line as any, {
+            x: box.x + padX,
+            y: box.y + box.h - 0.02,
+            w: Math.max(0.6, Math.min(4.2, box.w - padX * 2)),
+            h: 0,
+            line: { color: COLOR_ACCENT, width: 3 },
+          } as any);
+        }
+        continue;
+      }
+
+      if (el.type === "card") {
+        const box = clampBox(el);
+        const radius = el.radius != null ? clamp(el.radius, 0, 1.2) : 0.25;
+        const fill = safeHex(el.bg, "111A33");
+        const pad = 0.22;
+
+        if (el.shadow ?? true) {
+          slide.addShape(pptx.ShapeType.roundRect as any, {
+            x: clamp(box.x + 0.06, 0, SLIDE_W_IN),
+            y: clamp(box.y + 0.06, 0, SLIDE_H_IN),
+            w: box.w,
+            h: box.h,
+            fill: { color: "000000", transparency: 85 },
+            line: { color: "000000", transparency: 100 },
+            radius,
+          } as any);
+        }
+
+        slide.addShape(pptx.ShapeType.roundRect as any, {
+          ...box,
+          fill: { color: fill },
+          line: { color: "2A355D", transparency: 55, width: 1 },
+          radius,
+        } as any);
+
+        let cursorY = box.y + pad;
+        const innerX = box.x + pad;
+        const innerW = Math.max(MIN_SIZE_IN, box.w - pad * 2);
+
+        if (el.image) {
+          const imgH = Math.min(2.2, Math.max(1.2, box.h * 0.45));
+          try {
+            const img = await resolveImageDataUri({ src: el.image.src, imageCache });
+            slide.addImage({
+              data: img.data,
+              x: innerX,
+              y: cursorY,
+              w: innerW,
+              h: imgH,
+              sizing:
+                el.image.fit === "contain"
+                  ? { type: "contain", w: innerW, h: imgH }
+                  : { type: "crop", w: innerW, h: imgH },
+            } as any);
+          } catch {
+            slide.addShape(pptx.ShapeType.roundRect as any, {
+              x: innerX,
+              y: cursorY,
+              w: innerW,
+              h: imgH,
+              fill: { color: "0B1020" },
+              line: { color: "2A355D" },
+              radius: 0.18,
+            } as any);
+          }
+          cursorY += imgH + 0.15;
+        }
+
+        if (el.title) {
+          slide.addText(el.title, {
+            x: innerX,
+            y: cursorY,
+            w: innerW,
+            h: 0.45,
+            ...(FONT ? { fontFace: FONT } : {}),
+            fontSize: 18,
+            bold: true,
+            color: COLOR_FG,
+            valign: "top",
+          } as any);
+          cursorY += 0.48;
+        }
+
+        if (el.subtitle) {
+          slide.addText(el.subtitle, {
+            x: innerX,
+            y: cursorY,
+            w: innerW,
+            h: 0.38,
+            ...(FONT ? { fontFace: FONT } : {}),
+            fontSize: 14,
+            color: COLOR_MUTED,
+            valign: "top",
+          } as any);
+          cursorY += 0.42;
+        }
+
+        if (el.bullets?.length) {
+          const bullets = el.bullets.slice(0, 6).map((b) => `• ${b}`).join("\n");
+          const remainingH = Math.max(0.6, box.y + box.h - cursorY - 0.55);
+          const fs = estimateFittedFontSize({ text: bullets, wIn: innerW, hIn: remainingH, baseFontSize: 13 });
+          slide.addText(bullets, {
+            x: innerX,
+            y: cursorY,
+            w: innerW,
+            h: remainingH,
+            ...(FONT ? { fontFace: FONT } : {}),
+            fontSize: fs,
+            color: COLOR_MUTED,
+            valign: "top",
+            margin: 0.05,
+            lineSpacingMultiple: 1.08,
+          } as any);
+        }
+
+        if (el.footerRight) {
+          slide.addText(el.footerRight, {
+            x: innerX,
+            y: box.y + box.h - 0.42,
+            w: innerW,
+            h: 0.34,
+            ...(FONT ? { fontFace: FONT } : {}),
+            fontSize: 14,
+            bold: true,
+            color: COLOR_ACCENT,
+            align: "right",
+            valign: "bottom",
+          } as any);
+        }
+
+        continue;
+      }
+
       if (el.type === "text") {
         const box = clampBox(el);
         const fontSize = el.fit
@@ -229,27 +454,7 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
       // image: embed from Anthropic file_id or URL.
       try {
         const box = clampBox(el);
-        let cacheKey = `${el.src.kind}:${el.src.value}`;
-        let cached = imageCache.get(cacheKey);
-        if (!cached) {
-          if (el.src.kind === "anthropic_file") {
-            const fileId = el.src.value;
-            const hintMime = String(el.src.mime ?? "").trim();
-            const downloaded = await downloadFileFromAnthropic({ fileId });
-            const mime = hintMime || downloaded.mime || "image/png";
-            const data = dataUriFromBytes(new Uint8Array(downloaded.bytes), mime);
-            cached = { mime, data };
-          } else {
-            // URL fetch
-            const res = await fetch(el.src.value);
-            if (!res.ok) throw new Error(`image url fetch failed: ${res.status}`);
-            const ab = await res.arrayBuffer();
-            const mime = res.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
-            const data = dataUriFromBytes(new Uint8Array(ab), mime);
-            cached = { mime, data };
-          }
-          imageCache.set(cacheKey, cached);
-        }
+        const cached = await resolveImageDataUri({ src: el.src, imageCache });
 
         slide.addImage({
           data: cached.data,
