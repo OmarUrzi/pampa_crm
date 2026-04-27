@@ -26,6 +26,15 @@ export const DeckV2Schema = z.object({
   slides: z.array(
     z.object({
       id: z.string().optional(),
+      // Declarative hint for layout intent. Renderer can ignore this and still render elements 1:1.
+      preset: z
+        .discriminatedUnion("kind", [
+          z.object({ kind: z.literal("cover"), variant: z.enum(["hero-right", "hero-bottom"]).optional() }),
+          z.object({ kind: z.literal("section") }),
+          z.object({ kind: z.literal("cards"), columns: z.union([z.literal(2), z.literal(3)]), maxCards: z.union([z.literal(2), z.literal(3), z.literal(4)]) }),
+          z.object({ kind: z.literal("grid"), rows: z.union([z.literal(2), z.literal(3)]), cols: z.union([z.literal(2), z.literal(3)]) }),
+        ])
+        .optional(),
       bg: z.string().optional(),
       elements: z.array(
         z.discriminatedUnion("type", [
