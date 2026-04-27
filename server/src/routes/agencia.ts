@@ -86,6 +86,51 @@ export async function registerAgenciaRoutes(app: FastifyInstance) {
     return { assets };
   });
 
+  // Batch sync all agency assets missing `anthropicFileId` to Anthropic Files API.
+  app.post("/admin/agencia/assets/sync-anthropic", { preHandler: [jwtVerifyGuard, requireRole(["admin"])] }, async (req, reply) => {
+    const schema = z.object({ limit: z.number().int().min(1).max(50).optional() });
+    const body = schema.safeParse(req.body);
+    const limit = body.success ? body.data.limit ?? 25 : 25;
+
+    const apiKey = await getAiProviderKey("anthropic");
+    if (!apiKey) return reply.code(400).send({ error: "anthropic_not_configured" });
+
+    const assets = await prisma.agencyAsset.findMany({
+      where: { deletedAt: null, anthropicFileId: null, bytes: { not: null } },
+      orderBy: [{ createdAt: "asc" }],
+      take: limit,
+      select: { id: true, kind: true, filename: true, mime: true, bytes: true },
+    });
+
+    const uploaded: Array<{ id: string; fileId: string }> = [];
+    for (const a of assets) {
+      try {
+        const file = await uploadFileToAnthropic({
+          apiKey,
+          filename: a.filename ?? `agency-${a.kind}-${a.id}`,
+          mime: a.mime ?? "application/octet-stream",
+          bytes: Buffer.from(a.bytes as any),
+        });
+        await prisma.agencyAsset.update({ where: { id: a.id }, data: { anthropicFileId: file.id } });
+        uploaded.push({ id: a.id, fileId: file.id });
+      } catch (e: any) {
+        // Stop early; likely rate-limit or auth issue. Return partial progress.
+        return reply.code(200).send({ ok: false, uploaded, failedAt: a.id, message: String(e?.message ?? e).slice(0, 400) });
+      }
+    }
+
+    await auditLog({
+      req,
+      action: "update",
+      entity: "AgencyAsset",
+      entityId: null,
+      summary: "Agencia: sync batch a Anthropic Files",
+      data: { count: uploaded.length, limit },
+    });
+
+    return reply.send({ ok: true, uploaded, count: uploaded.length, limit });
+  });
+
   // Multipart upload: file + kind + optional name
   app.post("/admin/agencia/assets", { preHandler: [jwtVerifyGuard, requireRole(["admin"])] }, async (req, reply) => {
     const ct = String((req.headers as any)?.["content-type"] ?? "");

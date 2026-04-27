@@ -49,6 +49,54 @@ export async function registerCatalogoRoutes(app: FastifyInstance) {
     },
   );
 
+  // Batch sync catalog photos missing `anthropicFileId`.
+  // Note: kept write-access gated (same as catalog editing) to avoid exposing a bulk upstream upload to any viewer.
+  app.post(
+    "/catalogo/fotos/sync-anthropic",
+    { preHandler: [jwtVerifyGuard, requireWriteAccess()] },
+    async (req, reply) => {
+      const schema = z.object({
+        limit: z.number().int().min(1).max(50).optional(),
+      });
+      const body = schema.parse((req.body ?? {}) as any);
+      const limit = body.limit ?? 25;
+
+      const apiKey = await getAiProviderKey("anthropic");
+      if (!apiKey) return reply.code(400).send({ error: "anthropic_not_configured" });
+
+      const fotos = await prisma.actividadFoto.findMany({
+        where: { deletedAt: null, bytes: { not: null }, anthropicFileId: null },
+        orderBy: { createdAt: "asc" },
+        take: limit,
+        select: { id: true, bytes: true, mime: true, filename: true },
+      });
+
+      let synced = 0;
+      for (const f of fotos) {
+        try {
+          const file = await uploadFileToAnthropic({
+            apiKey,
+            filename: f.filename ?? `catalogo-foto-${f.id}.bin`,
+            mime: f.mime ?? "application/octet-stream",
+            bytes: Buffer.from(f.bytes as any),
+          });
+          await prisma.actividadFoto.update({ where: { id: f.id }, data: { anthropicFileId: file.id } });
+          synced++;
+        } catch (e: any) {
+          // Stop on first upstream error so caller can retry later.
+          return reply.code(502).send({
+            error: "anthropic_upload_failed",
+            message: String(e?.message ?? "upload_failed"),
+            synced,
+            failedId: f.id,
+          });
+        }
+      }
+
+      return reply.send({ ok: true, attempted: fotos.length, synced, remaining: Math.max(0, fotos.length - synced) });
+    },
+  );
+
   app.get("/catalogo/fotos/:fotoId/blob", async (req, reply) => {
     // Allow passing JWT in query for tools/LLMs that can't send headers.
     // If token is missing/invalid we still allow public access to the blob (current behavior),

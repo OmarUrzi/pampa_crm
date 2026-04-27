@@ -52,6 +52,7 @@ export function AdminAgenciaPage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [bulkSyncing, setBulkSyncing] = useState(false);
   const [assets, setAssets] = useState<AgenciaAsset[]>([]);
   const [confirmDel, setConfirmDel] = useState<AgenciaAsset | null>(null);
   const [kind, setKind] = useState<"logo_square" | "logo_wide" | "photo" | "pptx_guide">("logo_wide");
@@ -253,6 +254,35 @@ export function AdminAgenciaPage() {
               }}
             >
               {uploading ? "Subiendo…" : "Subir asset"}
+            </Button>
+            <Button
+              type="button"
+              disabled={bulkSyncing || loading}
+              onClick={() => {
+                void run(async () => {
+                  setBulkSyncing(true);
+                  try {
+                    const res = await apiFetch<{
+                      ok: boolean;
+                      uploaded?: Array<{ id: string; fileId: string }>;
+                      count?: number;
+                      limit?: number;
+                      failedAt?: string;
+                      message?: string;
+                    }>(
+                      "/admin/agencia/assets/sync-anthropic",
+                      { method: "POST", timeoutMs: 120_000 } as any,
+                    );
+                    if (res.ok) info(`Sync Claude: ${res.count ?? (res.uploaded?.length ?? 0)} subidos`);
+                    else info(`Sync Claude incompleto: ${res.uploaded?.length ?? 0} subidos · falló en ${res.failedAt ?? "?"}`);
+                    await refresh();
+                  } finally {
+                    setBulkSyncing(false);
+                  }
+                });
+              }}
+            >
+              {bulkSyncing ? "Syncing…" : "Sync todo a Claude"}
             </Button>
           </div>
 
