@@ -5,6 +5,8 @@ import { jwtVerifyGuard } from "../auth/jwtGuards.js";
 import { requireWriteAccess } from "../auth/roleGuards.js";
 import { auditLog } from "../audit.js";
 import { acceptJwtFromQuery } from "../services/tokenQueryAuth.js";
+import { uploadFileToAnthropic } from "../services/anthropicFiles.js";
+import { getAiProviderKey } from "../services/aiProviders.js";
 
 export async function registerCatalogoRoutes(app: FastifyInstance) {
   function mapFoto(f: any) {
@@ -13,10 +15,39 @@ export async function registerCatalogoRoutes(app: FastifyInstance) {
       id: f.id,
       url: f.url ?? null,
       caption: f.caption ?? null,
+      anthropicFileId: f.anthropicFileId ?? null,
       hasBytes: !!f.bytes,
       blobUrl,
     };
   }
+
+  app.post(
+    "/catalogo/fotos/:fotoId/sync-anthropic",
+    { preHandler: [jwtVerifyGuard, requireWriteAccess()] },
+    async (req, reply) => {
+      const fotoId = (req.params as { fotoId: string }).fotoId;
+      const foto = await prisma.actividadFoto.findUnique({
+        where: { id: fotoId },
+        select: { id: true, bytes: true, mime: true, filename: true, deletedAt: true, anthropicFileId: true },
+      });
+      if (!foto || foto.deletedAt) return reply.code(404).send({ error: "not_found" });
+      if (foto.anthropicFileId) return reply.send({ ok: true, fileId: foto.anthropicFileId, reused: true });
+      if (!foto.bytes) return reply.code(400).send({ error: "no_bytes" });
+
+      const apiKey = await getAiProviderKey("anthropic");
+      if (!apiKey) return reply.code(400).send({ error: "anthropic_not_configured" });
+
+      const file = await uploadFileToAnthropic({
+        apiKey,
+        filename: foto.filename ?? `catalogo-foto-${foto.id}.bin`,
+        mime: foto.mime ?? "application/octet-stream",
+        bytes: Buffer.from(foto.bytes),
+      });
+
+      await prisma.actividadFoto.update({ where: { id: foto.id }, data: { anthropicFileId: file.id } });
+      return reply.send({ ok: true, fileId: file.id });
+    },
+  );
 
   app.get("/catalogo/fotos/:fotoId/blob", async (req, reply) => {
     // Allow passing JWT in query for tools/LLMs that can't send headers.
