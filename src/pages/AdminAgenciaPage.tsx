@@ -290,7 +290,6 @@ export function AdminAgenciaPage() {
                       </div>
                       <button
                         type="button"
-                        className={styles.accountBtn}
                         disabled={!!a.anthropicFileId || syncingId === a.id}
                         onClick={() => {
                           void run(async () => {
