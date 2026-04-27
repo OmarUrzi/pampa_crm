@@ -276,39 +276,54 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         systemChars: system.length,
         userChars: userText.length,
       });
-      const txt = await callAnthropicClaude({
-        apiKey,
-        system,
-        messages: [user],
-        model: "claude-sonnet-4-6",
-        maxTokens: 2400,
-        betas: attachments.length ? ["files-api-2025-04-14"] : undefined,
-        stopSequences: ["\n\nINSTRUCCION:", "\n\nCONTEXT_JSON:"],
-      });
-      const parsed = tryParseDeckJson(txt);
-      if (!parsed.ok) {
-        // eslint-disable-next-line no-console
-        console.warn("[slidesEvento] Claude JSON parse error", {
-          eventoId: body.eventoId,
-          upstreamSnippet: redactTokens(String(txt ?? "")).slice(0, 2000),
+      async function callOnce(tag: "first" | "retry", apiKeyNonNull: string) {
+        const txt = await callAnthropicClaude({
+          apiKey: apiKeyNonNull,
+          system,
+          messages: [user],
+          model: "claude-sonnet-4-6",
+          maxTokens: 2400,
+          betas: attachments.length ? ["files-api-2025-04-14"] : undefined,
+          stopSequences: ["\n\nINSTRUCCION:", "\n\nCONTEXT_JSON:"],
         });
-        return reply.code(502).send({
-          error: "ai_parse_error",
-          message: "Claude devolvió un JSON inválido.",
-          upstreamBodySnippet: redactTokens(String(txt ?? "")).slice(0, 8000),
-        });
+        const parsed = tryParseDeckJson(txt);
+        if (!parsed.ok) {
+          // eslint-disable-next-line no-console
+          console.warn("[slidesEvento] Claude JSON parse error", {
+            eventoId: body.eventoId,
+            tag,
+            upstreamSnippet: redactTokens(String(txt ?? "")).slice(0, 2000),
+          });
+          return { ok: false as const, txt };
+        }
+        try {
+          const d = parsed.deck as any;
+          if (d?.version !== 2) throw new Error("deck_not_v2");
+          DeckV2Schema.parse(d);
+          return { ok: true as const, deck: d, txt };
+        } catch {
+          // eslint-disable-next-line no-console
+          console.warn("[slidesEvento] Claude deck v2 validation error", {
+            eventoId: body.eventoId,
+            tag,
+            upstreamSnippet: redactTokens(String(txt ?? "")).slice(0, 2000),
+          });
+          return { ok: false as const, txt };
+        }
       }
-      deck = parsed.deck;
-      // Validate DeckV2 (version=2) strictly. If invalid, treat as parse error.
-      try {
-        if (deck?.version !== 2) throw new Error("deck_not_v2");
-        DeckV2Schema.parse(deck);
-      } catch {
-        return reply.code(502).send({
-          error: "ai_parse_error",
-          message: "Claude devolvió un JSON inválido (Deck v2).",
-          upstreamBodySnippet: redactTokens(String(txt ?? "")).slice(0, 8000),
-        });
+
+      const first = await callOnce("first", apiKey);
+      if (first.ok) deck = first.deck;
+      else {
+        const retry = await callOnce("retry", apiKey);
+        if (retry.ok) deck = retry.deck;
+        else {
+          return reply.code(502).send({
+            error: "ai_parse_error",
+            message: "Claude devolvió un JSON inválido (Deck v2).",
+            upstreamBodySnippet: redactTokens(String(retry.txt ?? first.txt ?? "")).slice(0, 8000),
+          });
+        }
       }
     } catch (e) {
       if (e instanceof AiUpstreamError) {
