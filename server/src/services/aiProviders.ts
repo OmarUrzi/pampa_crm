@@ -82,6 +82,7 @@ export async function callAnthropicClaude(input: {
       "content-type": "application/json",
       "x-api-key": input.apiKey,
       "anthropic-version": "2023-06-01",
+      ...(input.betas?.length ? { "anthropic-beta": input.betas.join(",") } : {}),
     },
     body: JSON.stringify({
       model,
@@ -89,7 +90,6 @@ export async function callAnthropicClaude(input: {
       temperature: input.temperature ?? 0.2,
       system: input.system ?? undefined,
       messages: input.messages,
-      betas: input.betas ?? undefined,
       stop_sequences: input.stopSequences ?? undefined,
     }),
   });
