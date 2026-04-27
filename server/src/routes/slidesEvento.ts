@@ -6,24 +6,9 @@ import { requireWriteAccess } from "../auth/roleGuards.js";
 import { callAnthropicClaude, getAiProviderKey, AiUpstreamError } from "../services/aiProviders.js";
 import { env } from "../config.js";
 import { renderDeckHtml } from "./slides.js";
+import { DeckV2Schema } from "../services/pptxDeckV2.js";
 
-type EventoDeck = {
-  title: string;
-  logo?: { variant?: "square" | "wide"; url?: string };
-  slides: Array<
-    | { kind: "title"; title: string; subtitle?: string }
-    | { kind: "section"; title: string; bullets?: string[] }
-    | {
-        kind: "quote_item";
-        title: string;
-        supplier?: string | null;
-        bullets?: string[];
-        priceLabel?: string | null;
-        imageUrls?: string[];
-      }
-    | { kind: "closing"; title: string; bullets?: string[] }
-  >;
-};
+type EventoDeck = any;
 
 function redactTokens(input: string) {
   // Avoid logging JWTs (Authorization query tokens) in server logs / API responses.

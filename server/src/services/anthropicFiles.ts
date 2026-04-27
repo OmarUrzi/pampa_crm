@@ -8,6 +8,25 @@ export type AnthropicFileMetadata = {
   created_at?: string;
 };
 
+export async function downloadFileFromAnthropic(input: { fileId: string; apiKey?: string }): Promise<{ bytes: Buffer; mime: string }> {
+  const apiKey = input.apiKey ?? (await getAiProviderKey("anthropic"));
+  if (!apiKey) throw new AiUpstreamError("anthropic", 400, "anthropic_not_configured");
+
+  const res = await fetch(`https://api.anthropic.com/v1/files/${encodeURIComponent(input.fileId)}/content`, {
+    method: "GET",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-beta": "files-api-2025-04-14",
+      Accept: "application/binary",
+    },
+  });
+  const arr = await res.arrayBuffer();
+  if (!res.ok) throw new AiUpstreamError("anthropic", res.status, Buffer.from(arr).toString("utf-8").slice(0, 800));
+  const mime = String(res.headers.get("content-type") ?? "application/octet-stream");
+  return { bytes: Buffer.from(arr), mime };
+}
+
 export async function uploadFileToAnthropic(input: {
   filename: string;
   mime: string;

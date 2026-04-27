@@ -2,6 +2,7 @@
 // Renderer executes the spec using PptxGenJS.
 import pptxgen from "pptxgenjs";
 import { z } from "zod";
+import { downloadFileFromAnthropic } from "./anthropicFiles.js";
 
 export const DeckV2Schema = z.object({
   version: z.literal(2),
@@ -88,6 +89,20 @@ function safeHex(x: string | undefined, fallback: string) {
   return /^[0-9a-fA-F]{6}$/.test(s) ? s.toUpperCase() : fallback;
 }
 
+function extFromMime(mime: string | undefined) {
+  const m = String(mime ?? "").toLowerCase();
+  if (m.includes("png")) return "png";
+  if (m.includes("jpeg") || m.includes("jpg")) return "jpg";
+  if (m.includes("webp")) return "webp";
+  if (m.includes("gif")) return "gif";
+  return "png";
+}
+
+function dataUriFromBytes(bytes: Uint8Array, mime: string) {
+  const b64 = Buffer.from(bytes as any).toString("base64");
+  return `data:${mime};base64,${b64}`;
+}
+
 export async function deckV2ToPptxBuffer(deckJson: unknown) {
   const deck = DeckV2Schema.parse(deckJson);
 
@@ -105,6 +120,9 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
   const COLOR_MUTED = safeHex(theme.muted, "B6C2E2");
   const COLOR_ACCENT = safeHex(theme.accent, "7C5CFF");
   const FONT = (theme.font ?? "").trim() || undefined;
+
+  // Cache external image bytes so repeated references don't re-download.
+  const imageCache = new Map<string, { mime: string; data: string }>();
 
   for (const s of deck.slides) {
     const slide = pptx.addSlide();
@@ -154,18 +172,53 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
         continue;
       }
 
-      // image: for now, we don't embed (needs fetching bytes + data URIs).
-      // We render a placeholder so layout can be validated end-to-end first.
-      slide.addShape(pptx.ShapeType.roundRect as any, {
-        x: el.x,
-        y: el.y,
-        w: el.w,
-        h: el.h,
-        fill: { color: "111A33" },
-        line: { color: "2A355D" },
-        radius: 0.2,
-      } as any);
-      slide.addText("IMG", { x: el.x, y: el.y + el.h / 2 - 0.2, w: el.w, h: 0.4, color: COLOR_MUTED, align: "center" } as any);
+      // image: embed from Anthropic file_id or URL.
+      try {
+        let cacheKey = `${el.src.kind}:${el.src.value}`;
+        let cached = imageCache.get(cacheKey);
+        if (!cached) {
+          if (el.src.kind === "anthropic_file") {
+            const fileId = el.src.value;
+            const hintMime = String(el.src.mime ?? "").trim();
+            const downloaded = await downloadFileFromAnthropic({ fileId });
+            const mime = hintMime || downloaded.mime || "image/png";
+            const data = dataUriFromBytes(new Uint8Array(downloaded.bytes), mime);
+            cached = { mime, data };
+          } else {
+            // URL fetch
+            const res = await fetch(el.src.value);
+            const ab = await res.arrayBuffer();
+            const mime = res.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
+            const data = dataUriFromBytes(new Uint8Array(ab), mime);
+            cached = { mime, data };
+          }
+          imageCache.set(cacheKey, cached);
+        }
+
+        slide.addImage({
+          data: cached.data,
+          x: el.x,
+          y: el.y,
+          w: el.w,
+          h: el.h,
+          sizing: el.fit === "contain" ? { type: "contain", w: el.w, h: el.h } : { type: "crop", w: el.w, h: el.h },
+        } as any);
+      } catch {
+        // Fallback placeholder
+        slide.addShape(pptx.ShapeType.roundRect as any, {
+          x: el.x,
+          y: el.y,
+          w: el.w,
+          h: el.h,
+          fill: { color: "111A33" },
+          line: { color: "2A355D" },
+          radius: 0.2,
+        } as any);
+        slide.addText(
+          `IMG (${extFromMime(el.src.mime)})`,
+          { x: el.x, y: el.y + el.h / 2 - 0.2, w: el.w, h: 0.4, color: COLOR_MUTED, align: "center" } as any,
+        );
+      }
     }
   }
 
