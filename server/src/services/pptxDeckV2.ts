@@ -433,9 +433,7 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
 
       if (el.type === "text") {
         const box = clampBox(el);
-        const fontSize = el.fit
-          ? estimateFittedFontSize({ text: el.text, wIn: box.w, hIn: box.h, baseFontSize: el.fontSize ?? 18 })
-          : (el.fontSize ?? 18);
+        const fontSize = estimateFittedFontSize({ text: el.text, wIn: box.w, hIn: box.h, baseFontSize: el.fontSize ?? 18 });
         slide.addText(el.text, {
           ...box,
           ...(FONT ? { fontFace: FONT } : {}),
