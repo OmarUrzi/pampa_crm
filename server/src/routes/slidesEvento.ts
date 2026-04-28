@@ -86,7 +86,12 @@ function quoteOnlyDeck(input: { deck: any; context: any }) {
   const items = Array.isArray(ctx?.cotizacion?.items) ? ctx.cotizacion.items : [];
   const event = ctx?.evento ?? {};
   const agencyAssets = Array.isArray(ctx?.agencia?.assets) ? ctx.agencia.assets : [];
+  const deckText = JSON.stringify(input.deck ?? {});
+  const claudeLogo = agencyAssets.find((a: any) =>
+    [a.id, a.blobUrl, a.anthropicFileId].some((value) => value && deckText.includes(String(value))),
+  );
   const logo =
+    claudeLogo ??
     agencyAssets.find((a: any) => a.kind === "logo_wide" && a.blobUrl) ??
     agencyAssets.find((a: any) => a.kind === "logo_square" && a.blobUrl) ??
     null;
@@ -169,6 +174,7 @@ function quoteOnlyDeck(input: { deck: any; context: any }) {
     const unit = Number(it.unit ?? 0);
     const subtotal = Number(it.subtotal ?? (Number(it.pax ?? pax ?? 0) * unit));
     const photo = Array.isArray(it.fotos) ? it.fotos[0] : null;
+    const description = String(it.descripcion ?? "").trim();
     const imageEls: any[] = photo
       ? [
           shape(7.0, 0.85, 5.75, 4.75, light, { line: { color: light, width: 0.5 } }),
@@ -185,6 +191,15 @@ function quoteOnlyDeck(input: { deck: any; context: any }) {
           color: muted,
           fit: true,
         }),
+        ...(description
+          ? [
+              text(description, 0.55, 3.05, 5.85, 1.45, {
+                fontSize: 15,
+                color: fg,
+                fit: true,
+              }),
+            ]
+          : []),
         shape(0.55, 5.75, 5.85, 0.92, accent),
         text(`SUBTOTAL ${cur} ${subtotal.toLocaleString("en-US")}`, 0.75, 5.98, 5.45, 0.42, { fontSize: 22, bold: true, color: dark, fit: true }),
         ...imageEls,
@@ -297,6 +312,7 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         subtotal: typeof it.pax === "number" && typeof it.unit === "number" ? it.pax * it.unit : null,
         fotos,
         fotosAnthropicFileIds,
+        descripcion: act?.descripcion ?? null,
       };
     });
 
@@ -347,6 +363,11 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       "Respondé SOLO JSON válido, sin markdown, sin texto extra.",
       "IMPORTANTE: devolvé SIEMPRE el formato DECK_V2 (layout spec) con version=2.",
       "",
+      "REGLAS NO NEGOCIABLES:",
+      "1) Fuentes, colores, tipografía, ritmo visual y composición deben ser equivalentes al PPTX guide cuando esté disponible.",
+      "2) El contenido comercial sale solo de CONTEXT_JSON: fotos, descripciones, precios por persona, pax, subtotales y total de la cotización.",
+      "3) Los logos disponibles se envían en CONTEXT_JSON/attachments; elegí el que mejor funcione visualmente y referencialo en el deck.",
+      "",
       "DECK_V2:",
       "- Raíz: { version:2, title:string, theme?:{bg,fg,muted,accent,font}, slides:[...] }",
       "- Cada slide: { bg?:hex6, preset?:..., elements:[...] }",
@@ -382,9 +403,10 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       "- CONTENIDO ESTRICTO: la guía adjunta es SOLO referencia visual (layout, paleta, ritmo, tipografía).",
       "- No copies texto, agenda, servicios, actividades, títulos, disclaimers, condiciones comerciales ni datos de cliente desde la guía visual.",
       "- No agregues servicios, inclusiones, vehículos, excursiones, actividades, cronogramas ni condiciones que no estén en CONTEXT_JSON.",
-      "- No infieras inclusiones a partir del nombre del servicio. Ej: si el item se llama 'Servicio de Traslado', NO inventes aeropuerto, hotel, restaurantes, excursiones, vehículos, equipaje ni logística.",
-      "- No infieras inclusiones a partir de 'Clase Ski'. NO inventes instructores, niveles, alquiler, medios de elevación, duración ni formatos si no aparecen literalmente en CONTEXT_JSON.",
-      "- Las slides de servicio solo pueden usar estos datos del item: servicio, proveedor, pax, unitCur, unit, subtotal y fotos. Si no hay descripción explícita en el item, no agregues descripción ni bullets de inclusiones.",
+      "- No infieras inclusiones a partir del nombre del servicio.",
+      "- Las slides de servicio solo pueden usar estos datos del item: servicio, proveedor, descripcion, pax, unitCur, unit, subtotal y fotos.",
+      "- Si un item trae descripcion en CONTEXT_JSON, usala tal cual como copy principal del servicio.",
+      "- Si un item no trae descripcion explícita, no agregues descripción ni bullets de inclusiones.",
       "- La slide de introducción/resumen solo puede listar alcance general del evento y nombres de servicios cotizados; no agregues contenido del guide.",
       "- No agregues condiciones comerciales salvo que estén literalmente en CONTEXT_JSON. Evitá frases como 'tarifas netas', 'vigencia', 'propinas', 'gastos bancarios', 'recargos', 'no reembolso'.",
       "",
@@ -417,14 +439,19 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
     ].join("\n");
 
     const attachments: any[] = [];
-    // Do not attach the PPTX/PDF guide to generation: Claude can read its text and
-    // copy guide-only services/conditions into the quote. Keep the guide as visual
-    // inspiration in the prompt, but make CONTEXT_JSON the only content source.
-    const logo = (logoWide?.anthropicFileId ? logoWide : logoSquare?.anthropicFileId ? logoSquare : null) as any;
-    if (logo?.anthropicFileId) {
+    // The guide is attached only as a visual/design reference. The persisted deck is
+    // rebuilt from CONTEXT_JSON below, so copied guide text cannot leak into content.
+    const guide = agencyAssets.find((a) => a.kind === "pptx_guide" && a.anthropicFileId) ?? null;
+    if (guide?.anthropicFileId) {
+      attachments.push({ type: "document", source: { type: "file", file_id: guide.anthropicFileId } });
+    }
+    const logoFileIds = Array.from(
+      new Set([logoWide?.anthropicFileId, logoSquare?.anthropicFileId].filter(Boolean).map((x) => String(x))),
+    );
+    for (const fileId of logoFileIds) {
       attachments.push({
         type: "image",
-        source: { type: "file", file_id: logo.anthropicFileId },
+        source: { type: "file", file_id: fileId },
       });
     }
     // Attach up to 8 catalog photos referenced by current quote items.
