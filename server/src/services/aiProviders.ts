@@ -16,18 +16,28 @@ export class AiUpstreamError extends Error {
   }
 }
 
+function envProviderKey(provider: AiProvider): string | null {
+  const envName =
+    provider === "anthropic" ? "ANTHROPIC_API_KEY" : provider === "gemini" ? "GEMINI_API_KEY" : "OPENAI_API_KEY";
+  return process.env[envName]?.trim() || null;
+}
+
 export async function getAiProviderKey(provider: AiProvider): Promise<string | null> {
   const row = await prisma.aiProviderKey.findFirst({
     where: { provider: provider as any, revokedAt: null },
     orderBy: { createdAt: "desc" },
     select: { apiKeyEnc: true },
   });
-  if (!row?.apiKeyEnc) return null;
-  try {
-    return decryptSecret(row.apiKeyEnc);
-  } catch {
-    return null;
+  if (row?.apiKeyEnc) {
+    try {
+      const key = decryptSecret(row.apiKeyEnc);
+      if (key) return key;
+    } catch {
+      // Fall back to Cloud Agent / runtime secrets when the DB key was encrypted
+      // with a different JWT_SECRET or has not been configured in Admin yet.
+    }
   }
+  return envProviderKey(provider);
 }
 
 /** Google AI Studio / Gemini API (API key en query). Default model configurable via GEMINI_MODEL. */

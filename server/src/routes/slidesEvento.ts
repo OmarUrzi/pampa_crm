@@ -6,24 +6,9 @@ import { requireWriteAccess } from "../auth/roleGuards.js";
 import { callAnthropicClaude, getAiProviderKey, AiUpstreamError } from "../services/aiProviders.js";
 import { env } from "../config.js";
 import { renderDeckHtml } from "./slides.js";
+import { DeckV2Schema } from "../services/pptxDeckV2.js";
 
-type EventoDeck = {
-  title: string;
-  logo?: { variant?: "square" | "wide"; url?: string };
-  slides: Array<
-    | { kind: "title"; title: string; subtitle?: string }
-    | { kind: "section"; title: string; bullets?: string[] }
-    | {
-        kind: "quote_item";
-        title: string;
-        supplier?: string | null;
-        bullets?: string[];
-        priceLabel?: string | null;
-        imageUrls?: string[];
-      }
-    | { kind: "closing"; title: string; bullets?: string[] }
-  >;
-};
+type EventoDeck = any;
 
 function redactTokens(input: string) {
   // Avoid logging JWTs (Authorization query tokens) in server logs / API responses.
@@ -87,8 +72,8 @@ function tryParseDeckJson(raw: string): { ok: true; deck: EventoDeck; usedExtrac
 
 function apiAbsUrl(path: string) {
   const base = String(process.env.API_PUBLIC_BASE ?? "").trim().replace(/\/$/, "");
-  if (!base) return path; // fallback
-  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+  const resolvedBase = base || `http://localhost:${env.PORT ?? 8787}`;
+  return `${resolvedBase}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 function moneyLabel(cur: string, amount: number) {
@@ -210,6 +195,7 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         versionId: version.id,
         label: version.label,
         items: quoteItems,
+        total: quoteItems.reduce((sum, it: any) => sum + (typeof it.subtotal === "number" ? it.subtotal : 0), 0),
       },
     };
 
@@ -220,24 +206,73 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
 
     const system = [
       "Sos un asistente que arma presentaciones de cotización para una agencia de eventos.",
+      "Vas a devolver un DECK JSON (no PPTX) que nuestro backend renderiza 1:1 a un archivo .pptx.",
       "Respondé SOLO JSON válido, sin markdown, sin texto extra.",
-      'NO uses la clave "type". Usá SIEMPRE la clave "kind".',
-      'Los valores permitidos para slide.kind son: "title" | "section" | "quote_item" | "closing".',
-      "Escapá saltos de línea dentro de strings como \\n.",
-      "Usá el contexto provisto (agencia, evento, cotización) para estructurar el deck.",
-      "Incluí logo de agencia en la portada si hay assets disponibles.",
-      "Usá como máximo 14 slides.",
-      "Estructura requerida:",
-      '{"title": string, "logo"?: { "variant"?: "square"|"wide", "url"?: string }, "slides": [ ... ] }',
-      'Ejemplo mínimo válido: {"title":"Cotización","slides":[{"kind":"title","title":"...","subtitle":"..."}]}',
+      "IMPORTANTE: devolvé SIEMPRE el formato DECK_V2 (layout spec) con version=2.",
+      "",
+      "DECK_V2:",
+      "- Raíz: { version:2, title:string, theme?:{bg,fg,muted,accent,font}, slides:[...] }",
+      "- Cada slide: { bg?:hex6, preset?:..., elements:[...] }",
+      "- preset ayuda a estandarizar layouts, pero IGUAL debés devolver `elements` completos (el renderer no infiere nada).",
+      "  preset permitido:",
+      '  - { kind:"cover", variant?:"hero-right"|"hero-bottom" }',
+      '  - { kind:"section" }',
+      '  - { kind:"cards", columns:2|3, maxCards:2|3|4 }',
+      '  - { kind:"grid", rows:2|3, cols:2|3 }',
+      "- Elementos permitidos:",
+      '  - text: { type:"text", text, x,y,w,h, fontSize?, bold?, italic?, color?, align?, valign?, fit? }',
+      '  - shape: { type:"shape", shape:"rect"|"roundRect"|"line", x,y,w,h, fill?, line?, radius? }',
+      '  - image: { type:"image", src:{ kind:"anthropic_file"|"url", value:string, mime? }, x,y,w,h, fit? }',
+      '  - sectionHeader: { type:"sectionHeader", title, subtitle?, x,y,w,h }  // renderer genera estilo consistente',
+      '  - card: { type:"card", x,y,w,h, title, subtitle?, bullets?, priceLabel?, image? } // renderer genera chrome + layout interno',
+      "",
+      "COORDENADAS:",
+      "- Usamos layout 16:9 (PptxGenJS LAYOUT_WIDE). Unidades en pulgadas.",
+      "- CANVAS: ancho=13.33, alto=7.50.",
+      "- REGLA ESTRICTA: x>=0, y>=0, w>0, h>0.",
+      "- REGLA ESTRICTA: x+w<=13.33 y y+h<=7.50.",
+      "- Tamaño mínimo recomendado: w>=0.30, h>=0.20 (evitá 0/negativos).",
+      "- Usá márgenes/\"safe area\". Evitá pegar texto al borde; dejá ~0.35\" de padding visual.",
+      "",
+      "TEXTOS:",
+      "- Preferí cajas de texto amplias (w>=4.0) para títulos.",
+      "- Para textos largos: poné fit=true (shrink) y reducís bullets.",
+      "- Máximo 6 bullets por bloque. Máximo 14 palabras por bullet.",
+      "- Nunca uses párrafos largos. Mejor 2-4 bullets cortos.",
+      "- DATOS CANÓNICOS: usá solamente CONTEXT_JSON para pax, fecha, locación, servicios, precios y totales.",
+      "- No copies pax/fechas de la guía visual. Si la guía dice otro pax o fecha, ignoralo.",
+      `- Para este pedido, el PAX canónico es ${evento.pax ?? "el indicado en CONTEXT_JSON"}.`,
+      "",
+      "REGLAS DE DISEÑO (estilo \"Pampa\" moderno):",
+      "- Portada: logo arriba izq, título grande, subtítulo, y una foto hero a la derecha o abajo.",
+      "- Secciones: título + bullets cortos + barra/acento.",
+      "- Ítems cotizados: cards con foto (cover), título, proveedor, pax, precio, bullets; máximo 4 por slide.",
+      "- Jerarquía tipográfica: título 40-52, subtítulos 18-22, cuerpo 14-18.",
+      "- Usá theme oscuro por defecto (bg oscuro, texto claro, accent violeta/azul).",
+      "- Si se adjunta una guía PPTX/PDF, priorizá su dirección visual: paleta, ritmo, composición, uso de logos, tipo de portada y estilo de slides.",
+      "- No inventes una identidad visual genérica si hay guía adjunta; adaptá el contenido del evento al look & feel de esa guía.",
+      "- ESTRUCTURA: cada item de cotización debe tener su propia diapositiva de servicio; no agrupes dos o más servicios en una misma slide.",
+      "- Podés usar una slide adicional de resumen/inversión, pero las slides de servicios deben ser individuales.",
+      "",
+      "IMÁGENES:",
+      "- Para elementos image del DECK JSON, preferí SIEMPRE src.kind='url' con blobUrl/url absoluta cuando exista.",
+      "- No uses src.kind='anthropic_file' para logos/assets de agencia si hay blobUrl: esos file_id sirven para que vos veas la guía/imagen, pero el renderer no siempre puede descargarlos.",
+      "- Solo usá src.kind='anthropic_file' si no existe ninguna URL/blobUrl para ese asset.",
+      "- Para fotos: fit='cover' en cajas amplias, evitando deformarlas o forzar ratios raros.",
+      "- Para logos: fit='contain', h<=0.7 y ubicarlos sobre una pastilla/fondo claro o zona clara si el asset tiene fondo blanco.",
+      "- No pegues logos con fondo blanco directamente encima de un fondo oscuro sin contenedor o margen.",
+      "",
+      "LIMITES:",
+      "- Máximo 14 slides.",
+      "- Texto conciso, bullets cortos. Evitá párrafos largos.",
     ].join("\n");
 
     const attachments: any[] = [];
     // Attach guide/logos/photos if they were synced to Anthropic Files API.
-    // NOTE: Anthropic only supports PDF/plaintext as `document` file sources. We only attach the guide
-    // if the stored file_id corresponds to a supported mime (we store PDF for pptx_guide sync).
+    // PPTX guides are converted to PDF before upload; legacy rows may still store
+    // the original PPTX mime locally, but the Anthropic file_id points to the PDF.
     const guide = agencyAssets.find((a) => a.kind === "pptx_guide" && a.anthropicFileId) ?? null;
-    if (guide?.anthropicFileId && String(guide.mime ?? "").toLowerCase().includes("pdf")) {
+    if (guide?.anthropicFileId) {
       attachments.push({ type: "document", source: { type: "file", file_id: guide.anthropicFileId } });
     }
     const logo = (logoWide?.anthropicFileId ? logoWide : logoSquare?.anthropicFileId ? logoSquare : null) as any;
@@ -271,29 +306,55 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         systemChars: system.length,
         userChars: userText.length,
       });
-      const txt = await callAnthropicClaude({
-        apiKey,
-        system,
-        messages: [user],
-        model: "claude-sonnet-4-6",
-        maxTokens: 2400,
-        betas: attachments.length ? ["files-api-2025-04-14"] : undefined,
-        stopSequences: ["\n\nINSTRUCCION:", "\n\nCONTEXT_JSON:"],
-      });
-      const parsed = tryParseDeckJson(txt);
-      if (!parsed.ok) {
-        // eslint-disable-next-line no-console
-        console.warn("[slidesEvento] Claude JSON parse error", {
-          eventoId: body.eventoId,
-          upstreamSnippet: redactTokens(String(txt ?? "")).slice(0, 2000),
+      async function callOnce(tag: "first" | "retry", apiKeyNonNull: string) {
+        const txt = await callAnthropicClaude({
+          apiKey: apiKeyNonNull,
+          system,
+          messages: [user],
+          model: "claude-sonnet-4-6",
+          maxTokens: 12000,
+          betas: attachments.length ? ["files-api-2025-04-14"] : undefined,
+          stopSequences: ["\n\nINSTRUCCION:", "\n\nCONTEXT_JSON:"],
         });
-        return reply.code(502).send({
-          error: "ai_parse_error",
-          message: "Claude devolvió un JSON inválido.",
-          upstreamBodySnippet: redactTokens(String(txt ?? "")).slice(0, 8000),
-        });
+        const parsed = tryParseDeckJson(txt);
+        if (!parsed.ok) {
+          // eslint-disable-next-line no-console
+          console.warn("[slidesEvento] Claude JSON parse error", {
+            eventoId: body.eventoId,
+            tag,
+            upstreamSnippet: redactTokens(String(txt ?? "")).slice(0, 2000),
+          });
+          return { ok: false as const, txt };
+        }
+        try {
+          const d = parsed.deck as any;
+          if (d?.version !== 2) throw new Error("deck_not_v2");
+          DeckV2Schema.parse(d);
+          return { ok: true as const, deck: d, txt };
+        } catch {
+          // eslint-disable-next-line no-console
+          console.warn("[slidesEvento] Claude deck v2 validation error", {
+            eventoId: body.eventoId,
+            tag,
+            upstreamSnippet: redactTokens(String(txt ?? "")).slice(0, 2000),
+          });
+          return { ok: false as const, txt };
+        }
       }
-      deck = parsed.deck;
+
+      const first = await callOnce("first", apiKey);
+      if (first.ok) deck = first.deck;
+      else {
+        const retry = await callOnce("retry", apiKey);
+        if (retry.ok) deck = retry.deck;
+        else {
+          return reply.code(502).send({
+            error: "ai_parse_error",
+            message: "Claude devolvió un JSON inválido (Deck v2).",
+            upstreamBodySnippet: redactTokens(String(retry.txt ?? first.txt ?? "")).slice(0, 8000),
+          });
+        }
+      }
     } catch (e) {
       if (e instanceof AiUpstreamError) {
         return reply.code(502).send({
@@ -309,11 +370,7 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       return reply.code(502).send({ error: "ai_parse_error", message: "Claude devolvió un JSON inválido." });
     }
 
-    // Ensure logo hint if model didn't include it.
-    if (!deck.logo?.url) {
-      const preferred = logoWide?.blobUrl ?? logoSquare?.blobUrl ?? null;
-      if (preferred) deck.logo = { variant: logoWide?.blobUrl ? "wide" : "square", url: preferred };
-    }
+    // For DeckV2, the renderer consumes explicit elements; we don't patch logo into the deck here.
 
     // Always log what Claude returned (to avoid losing paid output).
     // eslint-disable-next-line no-console
@@ -321,6 +378,7 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       eventoId: body.eventoId,
       deckTitle: deck.title ?? null,
       slidesCount: Array.isArray(deck.slides) ? deck.slides.length : null,
+      version: deck?.version ?? null,
       reqId: (req as any).id ?? null,
     });
 
