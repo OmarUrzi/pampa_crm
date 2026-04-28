@@ -563,7 +563,13 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
             deckJson: { googlePresentationId: googleDeck.presentationId, googleUrl: googleDeck.url, title: googleDeck.title },
           },
         });
-        return reply.send({ ok: true, provider: "google-slides", deckId: row.id, url: `/slides/decks/${row.id}` });
+        return reply.send({
+          ok: true,
+          provider: "google-slides",
+          deckId: row.id,
+          url: googleDeck.url,
+          pptxUrl: `/slides/decks/${row.id}/pptx`,
+        });
       } catch (e: any) {
         if (e?.message === "google_slides_not_configured") {
           return reply.code(400).send({

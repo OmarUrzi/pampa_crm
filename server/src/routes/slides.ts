@@ -5,7 +5,12 @@ import { jwtVerifyGuard } from "../auth/jwtGuards.js";
 import { requireWriteAccess } from "../auth/roleGuards.js";
 import { getAiProviderKey, callAnthropicClaude, AiUpstreamError } from "../services/aiProviders.js";
 import { deckToPptxBuffer } from "../services/pptxDeck.js";
-import { exportGoogleSlidesPptx } from "../services/googleSlidesDeck.js";
+import {
+  createGoogleSlidesCatalogDeck,
+  createGoogleSlidesFromStoredDeck,
+  exportGoogleSlidesPptx,
+  hasGoogleSlidesConfig,
+} from "../services/googleSlidesDeck.js";
 
 type Deck = {
   title: string;
@@ -138,6 +143,50 @@ export async function registerSlidesRoutes(app: FastifyInstance) {
       if ((deckOrErr as any)?.error) return reply.code(400).send(deckOrErr);
       const deck = deckOrErr as Deck;
 
+      const googleSlidesEnabled = process.env.SLIDES_GENERATION_BACKEND !== "legacy-pptx";
+      if (googleSlidesEnabled && !hasGoogleSlidesConfig()) {
+        return reply.code(400).send({
+          error: "google_slides_not_configured",
+          message: "Faltan credenciales de Google Slides/Drive para generar la presentación.",
+        });
+      }
+
+      if (googleSlidesEnabled) {
+        try {
+          const googleDeck = await createGoogleSlidesCatalogDeck({ deck });
+          const row = await prisma.slideDeck.create({
+            data: {
+              eventoId: body.eventoId ?? null,
+              prompt: body.prompt,
+              provider: "google-slides",
+              title: googleDeck.title,
+              deckJson: {
+                googlePresentationId: googleDeck.presentationId,
+                googleUrl: googleDeck.url,
+                title: googleDeck.title,
+                sourceDeck: deck,
+              } as any,
+            },
+          });
+
+          return reply.send({
+            ok: true,
+            provider: "google-slides",
+            deckId: row.id,
+            url: googleDeck.url,
+            pptxUrl: `/slides/decks/${row.id}/pptx`,
+          });
+        } catch (e: any) {
+          if (e?.message === "google_slides_not_configured") {
+            return reply.code(400).send({
+              error: "google_slides_not_configured",
+              message: "Faltan credenciales de Google Slides/Drive para generar la presentación.",
+            });
+          }
+          throw e;
+        }
+      }
+
       const row = await prisma.slideDeck.create({
         data: {
           eventoId: body.eventoId ?? null,
@@ -173,7 +222,8 @@ export async function registerSlidesRoutes(app: FastifyInstance) {
     const q = (req.query as any) ?? {};
     const row = await prisma.slideDeck.findUnique({ where: { id }, select: { deckJson: true, deletedAt: true } });
     if (!row || row.deletedAt) return reply.code(404).send({ error: "not_found" });
-    const html = renderDeckHtml(row.deckJson as any);
+    const deck = row.deckJson as any;
+    const html = renderDeckHtml(deck?.sourceDeck ?? deck);
     const wantsDownload = q.download === "1" || q.download === 1 || q.download === true || q.download === "true";
     if (wantsDownload) {
       reply.header("content-disposition", `attachment; filename="slides-${id}.html"`);
@@ -190,8 +240,26 @@ export async function registerSlidesRoutes(app: FastifyInstance) {
     const row = await prisma.slideDeck.findUnique({ where: { id }, select: { deckJson: true, deletedAt: true } });
     if (!row || row.deletedAt) return reply.code(404).send({ error: "not_found" });
     const deck = row.deckJson as any;
-    if (deck?.googlePresentationId) {
-      const buf = await exportGoogleSlidesPptx(deck.googlePresentationId);
+    let googlePresentationId = deck?.googlePresentationId;
+    if (!googlePresentationId && process.env.SLIDES_GENERATION_BACKEND !== "legacy-pptx" && hasGoogleSlidesConfig()) {
+      const googleDeck = await createGoogleSlidesFromStoredDeck({ deck: deck?.sourceDeck ?? deck });
+      googlePresentationId = googleDeck.presentationId;
+      await prisma.slideDeck.update({
+        where: { id },
+        data: {
+          provider: "google-slides",
+          title: googleDeck.title,
+          deckJson: {
+            googlePresentationId: googleDeck.presentationId,
+            googleUrl: googleDeck.url,
+            title: googleDeck.title,
+            sourceDeck: deck?.sourceDeck ?? deck,
+          } as any,
+        },
+      });
+    }
+    if (googlePresentationId) {
+      const buf = await exportGoogleSlidesPptx(googlePresentationId);
       reply.header("content-disposition", `attachment; filename="slides-${id}.pptx"`);
       reply.header("content-type", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
       return reply.send(buf);
