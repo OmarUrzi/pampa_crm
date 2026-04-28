@@ -33,6 +33,24 @@ npm run dev
 
 La API queda en `http://localhost:8787` y Swagger en `http://localhost:8787/docs`.
 
+## Slides / PPTX con Google APIs
+
+Por defecto, la generación de presentaciones usa Google Slides y exporta el PPTX desde Google Drive. Configurar en el backend:
+
+```bash
+GOOGLE_OAUTH_CLIENT_ID="..."
+GOOGLE_OAUTH_CLIENT_SECRET="..."
+GOOGLE_OAUTH_REFRESH_TOKEN="..."
+```
+
+El refresh token debe tener scopes de Google Slides y Drive (`presentations` + `drive`). Opcionalmente, `GOOGLE_DRIVE_FOLDER_ID` mueve las presentaciones creadas a una carpeta de Drive.
+
+Para forzar el renderer legacy local con PptxGenJS:
+
+```bash
+SLIDES_GENERATION_BACKEND=legacy-pptx
+```
+
 ## Tests
 
 Unit tests (Vitest):
