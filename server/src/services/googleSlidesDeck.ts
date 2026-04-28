@@ -173,7 +173,16 @@ function box(el: any) {
   return { x, y, w, h };
 }
 
-function createText(objectId: string, pageObjectId: string, text: string, x: number, y: number, w: number, h: number, opts: { size?: number; bold?: boolean; color?: any; font?: string; align?: "START" | "CENTER" | "END" } = {}) {
+function createText(
+  objectId: string,
+  pageObjectId: string,
+  text: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  opts: { size?: number; bold?: boolean; color?: any; font?: string; align?: "START" | "CENTER" | "END"; valign?: "TOP" | "MIDDLE" | "BOTTOM" } = {},
+) {
   const font = opts.font ?? "Georgia";
   const size = opts.size ?? 18;
   const color = opts.color ?? WHITE;
@@ -207,8 +216,15 @@ function createText(objectId: string, pageObjectId: string, text: string, x: num
       updateParagraphStyle: {
         objectId,
         textRange: { type: "ALL" },
-        style: { alignment: opts.align ?? "START" },
-        fields: "alignment",
+        style: { alignment: opts.align ?? "START", lineSpacing: 110 },
+        fields: "alignment,lineSpacing",
+      },
+    },
+    {
+      updateShapeProperties: {
+        objectId,
+        shapeProperties: { contentAlignment: opts.valign ?? "TOP" },
+        fields: "contentAlignment",
       },
     },
   ];
@@ -255,8 +271,28 @@ function safeText(value: unknown) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+function textWithLineBreaks(value: unknown) {
+  return String(value ?? "")
+    .split(/\r?\n/)
+    .map((line) => safeText(line))
+    .join("\n")
+    .trim();
+}
+
 function multiline(lines: Array<unknown>) {
   return lines.map(safeText).filter(Boolean).join("\n");
+}
+
+function googleAlignment(align: unknown): "START" | "CENTER" | "END" {
+  if (align === "center") return "CENTER";
+  if (align === "right") return "END";
+  return "START";
+}
+
+function googleValign(valign: unknown): "TOP" | "MIDDLE" | "BOTTOM" {
+  if (valign === "middle") return "MIDDLE";
+  if (valign === "bottom") return "BOTTOM";
+  return "TOP";
 }
 
 function slideObjectId(prefix: string, index: number) {
@@ -275,6 +311,11 @@ async function movePresentationToConfiguredFolder(auth: Awaited<ReturnType<typeo
 }
 
 export async function createGoogleSlidesQuoteDeck(input: { context: SlidesContext; claudeDeck?: unknown }) {
+  const candidate = input.claudeDeck as any;
+  if (candidate?.version === 2 && Array.isArray(candidate?.slides)) {
+    return await createGoogleSlidesDeckV2({ deck: candidate });
+  }
+
   const ctx = input.context;
   const auth = await googleAuth();
   const slides = google.slides({ version: "v1", auth });
@@ -453,12 +494,12 @@ export async function createGoogleSlidesDeckV2(input: { deck: any }) {
       const id = slideObjectId(`${pageId}_${safeText(el?.type) || "el"}`, idx + 1);
       const b = box(el);
       if (el?.type === "text") {
-        requests.push(...createText(id, pageId, safeText(el.text), b.x * 914400, b.y * 914400, b.w * 914400, b.h * 914400, {
+        requests.push(...createText(id, pageId, textWithLineBreaks(el.text), b.x * 914400, b.y * 914400, b.w * 914400, b.h * 914400, {
           size: Number(el.fontSize ?? 18),
           bold: !!el.bold,
           color: rgb(el.color ?? theme.fg, WHITE),
           font: safeText(theme.font) || "Georgia",
-          align: el.align === "center" ? "CENTER" : el.align === "right" ? "END" : "START",
+          align: googleAlignment(el.align),
         }));
       } else if (el?.type === "sectionHeader") {
         requests.push(...createText(id, pageId, multiline([el.title, el.subtitle]), b.x * 914400, b.y * 914400, b.w * 914400, b.h * 914400, {
@@ -495,7 +536,7 @@ export async function createGoogleSlidesDeckV2(input: { deck: any }) {
         const cardText = multiline([el.title, el.subtitle, ...(el.bullets ?? []).map((bullet: string) => `• ${bullet}`), el.footerRight]);
         if (cardText) {
           requests.push(...createText(`${id}_text`, pageId, cardText, (b.x + 0.16) * 914400, (b.y + 0.16) * 914400, Math.max(b.w - 0.32, 0.1) * 914400, Math.max(b.h - 0.32, 0.1) * 914400, {
-            size: 14,
+            size: 13,
             bold: true,
             color: rgb(theme.bg, GREEN),
             font: safeText(theme.font) || "Georgia",
