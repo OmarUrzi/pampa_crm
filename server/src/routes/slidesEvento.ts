@@ -245,6 +245,8 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       "- Ítems cotizados: cards con foto (cover), título, proveedor, pax, precio, bullets; máximo 4 por slide.",
       "- Jerarquía tipográfica: título 40-52, subtítulos 18-22, cuerpo 14-18.",
       "- Usá theme oscuro por defecto (bg oscuro, texto claro, accent violeta/azul).",
+      "- Si se adjunta una guía PPTX/PDF, priorizá su dirección visual: paleta, ritmo, composición, uso de logos, tipo de portada y estilo de slides.",
+      "- No inventes una identidad visual genérica si hay guía adjunta; adaptá el contenido del evento al look & feel de esa guía.",
       "",
       "IMÁGENES:",
       "- Si tenés file_id (Anthropic Files) usá src.kind='anthropic_file' con value=file_id.",
@@ -259,10 +261,10 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
 
     const attachments: any[] = [];
     // Attach guide/logos/photos if they were synced to Anthropic Files API.
-    // NOTE: Anthropic only supports PDF/plaintext as `document` file sources. We only attach the guide
-    // if the stored file_id corresponds to a supported mime (we store PDF for pptx_guide sync).
+    // PPTX guides are converted to PDF before upload; legacy rows may still store
+    // the original PPTX mime locally, but the Anthropic file_id points to the PDF.
     const guide = agencyAssets.find((a) => a.kind === "pptx_guide" && a.anthropicFileId) ?? null;
-    if (guide?.anthropicFileId && String(guide.mime ?? "").toLowerCase().includes("pdf")) {
+    if (guide?.anthropicFileId) {
       attachments.push({ type: "document", source: { type: "file", file_id: guide.anthropicFileId } });
     }
     const logo = (logoWide?.anthropicFileId ? logoWide : logoSquare?.anthropicFileId ? logoSquare : null) as any;
