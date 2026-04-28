@@ -5,6 +5,7 @@ import { jwtVerifyGuard } from "../auth/jwtGuards.js";
 import { requireWriteAccess } from "../auth/roleGuards.js";
 import { getAiProviderKey, callAnthropicClaude, AiUpstreamError } from "../services/aiProviders.js";
 import { deckToPptxBuffer } from "../services/pptxDeck.js";
+import { exportGoogleSlidesPptx } from "../services/googleSlidesDeck.js";
 
 type Deck = {
   title: string;
@@ -189,6 +190,12 @@ export async function registerSlidesRoutes(app: FastifyInstance) {
     const row = await prisma.slideDeck.findUnique({ where: { id }, select: { deckJson: true, deletedAt: true } });
     if (!row || row.deletedAt) return reply.code(404).send({ error: "not_found" });
     const deck = row.deckJson as any;
+    if (deck?.googlePresentationId) {
+      const buf = await exportGoogleSlidesPptx(deck.googlePresentationId);
+      reply.header("content-disposition", `attachment; filename="slides-${id}.pptx"`);
+      reply.header("content-type", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+      return reply.send(buf);
+    }
     const buf = await deckToPptxBuffer(deck);
     reply.header("content-disposition", `attachment; filename="slides-${id}.pptx"`);
     reply.header("content-type", "application/vnd.openxmlformats-officedocument.presentationml.presentation");

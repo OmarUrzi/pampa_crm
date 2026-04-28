@@ -7,6 +7,7 @@ import { callAnthropicClaude, getAiProviderKey, AiUpstreamError } from "../servi
 import { env } from "../config.js";
 import { renderDeckHtml } from "./slides.js";
 import { DeckV2Schema } from "../services/pptxDeckV2.js";
+import { createGoogleSlidesQuoteDeck, hasGoogleSlidesConfig } from "../services/googleSlidesDeck.js";
 
 type EventoDeck = any;
 
@@ -469,6 +470,13 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       ],
     };
 
+    const googleSlidesEnabled = process.env.SLIDES_GENERATION_BACKEND !== "legacy-pptx";
+    if (googleSlidesEnabled && !hasGoogleSlidesConfig()) {
+      return reply.code(400).send({
+        error: "google_slides_not_configured",
+        message: "Faltan credenciales de Google Slides/Drive para generar la presentación.",
+      });
+    }
     let deck: EventoDeck;
     try {
       // eslint-disable-next-line no-console
@@ -540,6 +548,31 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       // eslint-disable-next-line no-console
       console.warn("[slidesEvento] Claude call failed", { eventoId: body.eventoId });
       return reply.code(502).send({ error: "ai_parse_error", message: "Claude devolvió un JSON inválido." });
+    }
+
+    if (googleSlidesEnabled) {
+      try {
+        const googleDeck = await createGoogleSlidesQuoteDeck({ context, claudeDeck: deck });
+        const row = await prisma.slideDeck.create({
+          data: {
+            eventoId: evento.id,
+            source: "evento",
+            title: googleDeck.title,
+            prompt: body.prompt,
+            provider: "google-slides",
+            deckJson: { googlePresentationId: googleDeck.presentationId, googleUrl: googleDeck.url, title: googleDeck.title },
+          },
+        });
+        return reply.send({ ok: true, provider: "google-slides", deckId: row.id, url: `/slides/decks/${row.id}` });
+      } catch (e: any) {
+        if (e?.message === "google_slides_not_configured") {
+          return reply.code(400).send({
+            error: "google_slides_not_configured",
+            message: "Faltan credenciales de Google Slides/Drive para generar la presentación.",
+          });
+        }
+        throw e;
+      }
     }
 
     // Claude may still infer content from service names. Keep its visual theme, but
