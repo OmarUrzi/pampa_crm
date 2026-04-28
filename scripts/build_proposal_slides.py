@@ -635,82 +635,116 @@ def build_section_divider(label: str, kicker: str | None = None, subtitle: str |
 
 def build_restaurant_slide(restaurant: dict, photos: dict[str, str]) -> SlidePlan:
     def _build(requests: list[dict], page_id: str) -> None:
+        # 1) Layout constants — derived from the design grid so the split
+        # stays consistent regardless of how Slides resizes the canvas.
+        LEFT_W = 4.44                                  # sidebar width (1/3 of 13.333)
+        RIGHT_X = LEFT_W + 0.35                        # right panel start with padding
+        RIGHT_W = DESIGN_W_IN - RIGHT_X - 0.35         # right panel width with right margin
+        BANNER_H = 1.1
+        BANNER_Y = DESIGN_H_IN - BANNER_H              # always anchored to bottom
+
         # split: dark left 1/3, cream right 2/3
         add_rect(requests, page_id, 0, 0, DESIGN_W_IN, DESIGN_H_IN, COLORS["cream"])
-        add_rect(requests, page_id, 0, 0, 4.6, DESIGN_H_IN, COLORS["dark"])
-        # gold horizontal markers on left top + bottom
-        add_rect(requests, page_id, 0, 0, 4.6, 0.14, COLORS["gold"])
+        add_rect(requests, page_id, 0, 0, LEFT_W, DESIGN_H_IN, COLORS["dark"])
+        # gold horizontal marker at top of left sidebar
+        add_rect(requests, page_id, 0, 0, LEFT_W, 0.14, COLORS["gold"])
 
         number = restaurant.get("number") or "01"
         add_text(
             requests, page_id, number,
             0.45, 0.55, 1.6, 0.7,
-            font={"family": "Georgia", "size": 38, "bold": True, "italic": True}, color=COLORS["gold"], align="left",
+            font={"family": "Georgia", "size": 38, "bold": True, "italic": True},
+            color=COLORS["gold"], align="left",
         )
         add_text(
             requests, page_id, "GASTRONOMÍA",
-            0.45, 1.4, 3.7, 0.4,
+            0.45, 1.4, LEFT_W - 0.9, 0.4,
             font=FONTS["overline"], color=COLORS["gold"], align="left",
         )
         add_text(
             requests, page_id, (restaurant.get("name") or "").upper(),
-            0.45, 1.9, 3.85, 1.5,
+            0.45, 1.9, LEFT_W - 0.75, 1.5,
             font=FONTS["title"], color=COLORS["white"], align="left", line_spacing=105,
         )
         if restaurant.get("description"):
+            # Description occupies the sidebar between the title and the
+            # bottom price banner. Cap height so it never bleeds into the
+            # banner anchored at BANNER_Y.
+            description_top = 3.6
+            description_h = max(0.3, BANNER_Y - 0.25 - description_top)
             add_text(
                 requests, page_id, restaurant["description"],
-                0.45, 3.6, 3.85, 2.0,
-                font=FONTS["body_small"], color=COLORS["muted"], align="left", line_spacing=140,
+                0.45, description_top, LEFT_W - 0.75, description_h,
+                font=FONTS["body_small"], color=COLORS["muted"],
+                align="left", line_spacing=140,
             )
-        # left bottom price banner (gold)
+
+        # 2) Price banner — anchored to bottom, never hardcoded y.
         cur = restaurant.get("currency") or "USD"
         price = restaurant.get("price") or restaurant.get("subtotal") or 0
-        add_rect(requests, page_id, 0, 6.3, 4.6, 1.2, COLORS["gold"])
+        add_rect(
+            requests, page_id,
+            0, BANNER_Y, LEFT_W, BANNER_H,
+            COLORS["gold"],
+        )
         add_text(
             requests, page_id, "POR PERSONA",
-            0.45, 6.42, 4.0, 0.32,
+            0.45, BANNER_Y + 0.15, LEFT_W - 0.75, 0.32,
             font=FONTS["overline"], color=COLORS["dark"], align="left",
         )
         add_text(
             requests, page_id, f"{cur} {price:,}",
-            0.45, 6.78, 4.0, 0.55,
+            0.45, BANNER_Y + 0.48, LEFT_W - 0.75, 0.55,
             font=FONTS["price_lg"], color=COLORS["dark"], align="left",
         )
 
-        # right side: image + sections
+        # 3) Photo — flush against the sidebar, full-bleed to the right edge.
+        PHOTO_X = LEFT_W + 0.0                         # flush against sidebar
+        PHOTO_W = DESIGN_W_IN - PHOTO_X                # full bleed to right edge
+        PHOTO_H = 2.8
         photo_url = (photos.get(restaurant.get("id") or "", []) or [None])[0]
         if photo_url:
-            add_image(requests, page_id, photo_url, 4.95, 0.6, 8.0, 3.05)
+            add_image(requests, page_id, photo_url,
+                      PHOTO_X, 0.0, PHOTO_W, PHOTO_H)
 
-        # menu list
+        # 4) Menu + inclusions — heights derived from the gap between the
+        # photo and the bottom banner so nothing collides.
+        CONTENT_TOP = PHOTO_H + 0.35
+        CONTENT_BOTTOM = BANNER_Y - 0.2
+        AVAILABLE_H = CONTENT_BOTTOM - CONTENT_TOP
+
+        menu_h = AVAILABLE_H * 0.55                    # give 55% to menu
+        inc_h  = AVAILABLE_H * 0.40                    # give 40% to inclusions
+
+        # 5) Use RIGHT_X / RIGHT_W everywhere on the right panel.
         menu = restaurant.get("menu") or []
-        right_x = 4.95
-        right_w = 8.05
         if menu:
             add_text(
                 requests, page_id, "MENÚ",
-                right_x, 3.85, right_w, 0.35,
+                RIGHT_X, CONTENT_TOP, RIGHT_W, 0.35,
                 font=FONTS["overline"], color=COLORS["gold"], align="left",
             )
             menu_text = "\n".join(f"·  {m}" for m in menu)
             add_text(
                 requests, page_id, menu_text,
-                right_x, 4.25, right_w, 1.5,
-                font=FONTS["body"], color=COLORS["ink"], align="left", line_spacing=140,
+                RIGHT_X, CONTENT_TOP + 0.35, RIGHT_W, menu_h,
+                font=FONTS["body"], color=COLORS["ink"],
+                align="left", line_spacing=140,
             )
+
         inclusions = restaurant.get("inclusions") or []
         if inclusions:
-            inc_y = 5.85
+            inc_y = CONTENT_TOP + 0.35 + menu_h + 0.3
             add_text(
                 requests, page_id, "INCLUYE",
-                right_x, inc_y, right_w, 0.35,
+                RIGHT_X, inc_y, RIGHT_W, 0.35,
                 font=FONTS["overline"], color=COLORS["gold"], align="left",
             )
             add_text(
                 requests, page_id, "  ·  ".join(inclusions),
-                right_x, inc_y + 0.4, right_w, 1.0,
-                font=FONTS["body_small"], color=COLORS["ink"], align="left", line_spacing=140,
+                RIGHT_X, inc_y + 0.4, RIGHT_W, inc_h,
+                font=FONTS["body_small"], color=COLORS["ink"],
+                align="left", line_spacing=140,
             )
 
     return SlidePlan(title=restaurant.get("name") or "Restaurante", build=_build)
