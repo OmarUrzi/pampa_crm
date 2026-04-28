@@ -72,8 +72,8 @@ function tryParseDeckJson(raw: string): { ok: true; deck: EventoDeck; usedExtrac
 
 function apiAbsUrl(path: string) {
   const base = String(process.env.API_PUBLIC_BASE ?? "").trim().replace(/\/$/, "");
-  if (!base) return path; // fallback
-  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+  const resolvedBase = base || `http://localhost:${env.PORT ?? 8787}`;
+  return `${resolvedBase}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 function moneyLabel(cur: string, amount: number) {
@@ -195,6 +195,7 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         versionId: version.id,
         label: version.label,
         items: quoteItems,
+        total: quoteItems.reduce((sum, it: any) => sum + (typeof it.subtotal === "number" ? it.subtotal : 0), 0),
       },
     };
 
@@ -238,6 +239,9 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       "- Para textos largos: poné fit=true (shrink) y reducís bullets.",
       "- Máximo 6 bullets por bloque. Máximo 14 palabras por bullet.",
       "- Nunca uses párrafos largos. Mejor 2-4 bullets cortos.",
+      "- DATOS CANÓNICOS: usá solamente CONTEXT_JSON para pax, fecha, locación, servicios, precios y totales.",
+      "- No copies pax/fechas de la guía visual. Si la guía dice otro pax o fecha, ignoralo.",
+      `- Para este pedido, el PAX canónico es ${evento.pax ?? "el indicado en CONTEXT_JSON"}.`,
       "",
       "REGLAS DE DISEÑO (estilo \"Pampa\" moderno):",
       "- Portada: logo arriba izq, título grande, subtítulo, y una foto hero a la derecha o abajo.",
@@ -249,8 +253,9 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       "- No inventes una identidad visual genérica si hay guía adjunta; adaptá el contenido del evento al look & feel de esa guía.",
       "",
       "IMÁGENES:",
-      "- Si tenés file_id (Anthropic Files) usá src.kind='anthropic_file' con value=file_id.",
-      "- Si no, usá src.kind='url' con value=url absoluta.",
+      "- Para elementos image del DECK JSON, preferí SIEMPRE src.kind='url' con blobUrl/url absoluta cuando exista.",
+      "- No uses src.kind='anthropic_file' para logos/assets de agencia si hay blobUrl: esos file_id sirven para que vos veas la guía/imagen, pero el renderer no siempre puede descargarlos.",
+      "- Solo usá src.kind='anthropic_file' si no existe ninguna URL/blobUrl para ese asset.",
       "- Para fotos: fit='cover' en cards/hero. Para logos: fit='contain'.",
       "- No estires logos: mantenelos dentro de cajas anchas y bajas (ej: h<=0.7).",
       "",
