@@ -351,10 +351,10 @@ def build_cover_slide(content: dict, logo_url: str | None = None) -> SlidePlan:
         destination = (content.get("destination") or "").strip()
         date = content.get("date") or ""
 
-        # Top-left agency logo on a cream pill (legible against dark bg).
+        # Top-left agency logo, transparent — recolored to white so it's
+        # legible against the dark green background, no backing pill.
         if logo_url:
-            add_rect(requests, page_id, 0.45, 0.45, 2.55, 0.95, COLORS["cream"])
-            add_image(requests, page_id, logo_url, 0.55, 0.53, 2.35, 0.78)
+            add_image(requests, page_id, logo_url, 0.55, 0.55, 2.4, 0.7)
         elif agency.get("name"):
             add_text(
                 requests, page_id, agency["name"],
@@ -525,20 +525,23 @@ def build_transfer_slide(transfer: dict, photos: dict[str, str]) -> SlidePlan:
             font=FONTS["body"], color=COLORS["muted"], align="left", line_spacing=140,
         )
 
+        # Banner is at y=6.05; reserve description height so it can never
+        # bleed into the banner regardless of canvas scaling.
         description = (transfer.get("description") or "").strip()
         if description:
             add_text(
                 requests, page_id, description,
-                0.7, 3.7, 6.4, 2.1,
-                font=FONTS["body"], color=COLORS["white"], align="left", line_spacing=130,
+                0.7, 3.7, 6.4, 2.05,  # ends at 5.75, banner starts at 6.05
+                font=FONTS["body_small"], color=COLORS["white"],
+                align="left", line_spacing=130,
             )
 
-        # right-side image bleed
+        # right-side image bleed (kept above the banner)
         photo_url = (photos.get(transfer.get("id") or "", []) or [None])[0]
         if photo_url:
-            add_image(requests, page_id, photo_url, 7.5, 1.0, 5.3, 4.65)
+            add_image(requests, page_id, photo_url, 7.5, 1.0, 5.3, 4.6)
 
-        # gold bottom price banner
+        # gold bottom price banner — bigger inset so text never clips its borders.
         cur = transfer.get("currency") or "USD"
         unit = transfer.get("unit") or 0
         pax = transfer.get("pax") or 0
@@ -547,40 +550,44 @@ def build_transfer_slide(transfer: dict, photos: dict[str, str]) -> SlidePlan:
         add_text(
             requests, page_id,
             f"{cur} {unit:,} / pax",
-            0.95, 6.18, 5.5, 0.6,
+            0.95, 6.22, 5.5, 0.5,
             font=FONTS["card_title"], color=COLORS["dark"], align="left",
         )
         add_text(
             requests, page_id,
             f"SUBTOTAL  {cur} {subtotal:,}",
-            6.45, 6.2, 6.18, 0.6,
+            6.45, 6.22, 6.18, 0.5,
             font=FONTS["price"], color=COLORS["dark"], align="right",
         )
 
     return SlidePlan(title=transfer.get("name") or "Traslado", build=_build)
 
 
-def build_section_divider(label: str, kicker: str | None = None) -> SlidePlan:
+def build_section_divider(label: str, kicker: str | None = None, subtitle: str | None = None) -> SlidePlan:
     def _build(requests: list[dict], page_id: str) -> None:
         fill_background(requests, page_id, COLORS["dark"])
-        gold_top_bottom_borders(requests, page_id, 0.20)
+        gold_top_bottom_borders(requests, page_id, 0.10)
         if kicker:
             add_text(
                 requests, page_id, kicker.upper(),
-                0.6, 2.65, 12.13, 0.5,
+                0.6, 2.7, 12.13, 0.5,
                 font=FONTS["overline"], color=COLORS["gold"], align="center",
             )
         add_text(
             requests, page_id, label.upper(),
-            0.6, 3.2, 12.13, 1.5,
-            font=FONTS["section"], color=COLORS["white"], align="center", line_spacing=110,
+            0.6, 3.25, 12.13, 1.55,
+            font={"family": "Georgia", "size": 60, "bold": True},
+            color=COLORS["white"], align="center", line_spacing=110,
         )
-        add_text(
-            requests, page_id,
-            "—",
-            0.6, 4.95, 12.13, 0.4,
-            font=FONTS["body"], color=COLORS["muted"], align="center",
-        )
+        # Decorative gold rule.
+        add_rect(requests, page_id, 5.4, 4.95, 2.53, 0.025, COLORS["gold"])
+        if subtitle:
+            add_text(
+                requests, page_id, subtitle,
+                0.6, 5.15, 12.13, 0.5,
+                font={"family": "Georgia", "size": 16, "italic": True},
+                color=COLORS["muted"], align="center",
+            )
 
     return SlidePlan(title=f"Section: {label}", build=_build)
 
@@ -689,33 +696,36 @@ def build_activity_slide(activity: dict, photos: dict[str, str]) -> SlidePlan:
             font=FONTS["title"], color=COLORS["dark"], align="left", line_spacing=110,
         )
 
+        # Banner sits at y=6.05; cap description height so long copy never
+        # bleeds into it. Use the smaller body size for dense paragraphs.
         description = (activity.get("description") or "").strip()
         if description:
             add_text(
                 requests, page_id, description,
-                0.7, 2.6, 7.5, 3.1,
-                font=FONTS["body"], color=COLORS["ink"], align="left", line_spacing=140,
+                0.7, 2.55, 7.5, 3.4,  # ends at 5.95, banner starts at 6.05
+                font=FONTS["body_small"], color=COLORS["ink"],
+                align="left", line_spacing=140,
             )
 
-        # right image
+        # right image (kept above the banner)
         photo_url = (photos.get(activity.get("id") or "", []) or [None])[0]
         if photo_url:
-            add_image(requests, page_id, photo_url, 8.45, 1.05, 4.4, 4.6)
+            add_image(requests, page_id, photo_url, 8.45, 1.05, 4.4, 4.55)
 
-        # bottom dark price banner
+        # bottom dark price banner — slightly smaller height, padded text.
         cur = activity.get("currency") or "USD"
         unit = activity.get("unit") or 0
         pax = activity.get("pax") or 0
         subtotal = activity.get("subtotal") if activity.get("subtotal") is not None else (unit * pax)
-        add_rect(requests, page_id, 0.7, 6.0, 11.93, 1.0, COLORS["dark"])
+        add_rect(requests, page_id, 0.7, 6.05, 11.93, 0.95, COLORS["dark"])
         add_text(
             requests, page_id, f"{cur} {unit:,} / pax  ·  {pax} pax",
-            0.95, 6.15, 6.0, 0.7,
+            0.95, 6.25, 6.0, 0.55,
             font=FONTS["card_title"], color=COLORS["white"], align="left",
         )
         add_text(
             requests, page_id, f"SUBTOTAL  {cur} {subtotal:,}",
-            6.95, 6.18, 5.68, 0.7,
+            6.95, 6.25, 5.68, 0.55,
             font=FONTS["price"], color=COLORS["gold"], align="right",
         )
 
@@ -915,13 +925,19 @@ def plan_presentation(
 
     restaurants = content.get("restaurants") or []
     if restaurants:
-        plans.append(build_section_divider("Gastronomía", "Capítulo"))
+        plans.append(build_section_divider(
+            "Gastronomía", kicker="Capítulo",
+            subtitle="Propuestas culinarias seleccionadas",
+        ))
         for r in restaurants:
             plans.append(build_restaurant_slide(r, photos))
 
     activities = content.get("activities") or []
     if activities:
-        plans.append(build_section_divider("Actividades", "Capítulo"))
+        plans.append(build_section_divider(
+            "Actividades", kicker="Capítulo",
+            subtitle="Experiencias seleccionadas para el grupo",
+        ))
         for a in activities:
             plans.append(build_activity_slide(a, photos))
 
@@ -981,6 +997,34 @@ def upload_photo_to_drive(drive, path: Path) -> str:
     return f"https://drive.google.com/uc?export=download&id={file_id}"
 
 
+def _recolor_logo_for_dark_bg(src_path: Path, target_hex: str = "#FFFFFF") -> Path:
+    """Recolor a transparent logo so its non-transparent pixels become a
+    target color (default white). This lets us use the agency's single
+    transparent logo on dark cover slides without a backing pill."""
+    try:
+        from PIL import Image
+    except Exception as exc:  # pragma: no cover
+        print(
+            f"[warn] Pillow not available; using logo as-is ({exc})",
+            file=sys.stderr,
+        )
+        return src_path
+    img = Image.open(src_path)
+    if "A" not in img.mode:
+        img = img.convert("RGBA")
+    target = tuple(int(target_hex.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+    pixels = img.load()
+    w, h = img.size
+    for x in range(w):
+        for y in range(h):
+            r, g, b, a = pixels[x, y]
+            if a > 0:
+                pixels[x, y] = (target[0], target[1], target[2], a)
+    out_path = src_path.with_suffix(f".for-dark{src_path.suffix}")
+    img.save(out_path)
+    return out_path
+
+
 def upload_photos(drive, photos_dir: Path, content: dict) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for group_key in ("transfers", "restaurants", "activities"):
@@ -1001,7 +1045,12 @@ def upload_photos(drive, photos_dir: Path, content: dict) -> dict[str, list[str]
 
 
 def upload_logo(drive, photos_dir: Path, content: dict) -> str | None:
-    """Upload the agency logo (if present) and return a public URL."""
+    """Upload the agency logo (if present) and return a public URL.
+
+    The transparent agency logo we have is dark navy, which disappears on
+    a dark green cover. Recolor non-transparent pixels to white so the logo
+    is legible without a backing pill.
+    """
     agency = content.get("agency") or {}
     logo_filename = agency.get("logo")
     if not logo_filename:
@@ -1009,7 +1058,8 @@ def upload_logo(drive, photos_dir: Path, content: dict) -> str | None:
     logo_path = photos_dir / logo_filename
     if not logo_path.exists():
         return None
-    return upload_photo_to_drive(drive, logo_path)
+    light_logo_path = _recolor_logo_for_dark_bg(logo_path, target_hex="#FFFFFF")
+    return upload_photo_to_drive(drive, light_logo_path)
 
 
 def render_slide(slides_api, presentation_id: str, plan: SlidePlan) -> None:
