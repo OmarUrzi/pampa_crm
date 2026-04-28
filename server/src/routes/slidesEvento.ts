@@ -127,6 +127,7 @@ function quoteOnlyDeck(input: { deck: any; context: any }) {
   const logoEl = logo?.blobUrl
     ? [{ type: "image", src: { kind: "url", value: logo.blobUrl, mime: logo.mime ?? undefined }, x: 0.45, y: 0.32, w: 2.1, h: 0.72, fit: "contain" }]
     : [];
+  const firstPhoto = items.find((it: any) => Array.isArray(it.fotos) && it.fotos[0])?.fotos?.[0] ?? null;
 
   const slides: any[] = [
     {
@@ -134,26 +135,31 @@ function quoteOnlyDeck(input: { deck: any; context: any }) {
       preset: { kind: "cover", variant: "hero-bottom" },
       elements: [
         shape(0, 0, 13.33, 0.18, accent),
+        shape(0, 7.28, 13.33, 0.22, accent),
         ...logoEl,
-        text(String(location).toUpperCase(), 1.0, 2.1, 11.3, 1.15, { fontSize: 54, bold: true, color: accent, align: "center", fit: true }),
-        text(`${company} · ${pax} PAX`, 1.5, 3.35, 10.3, 0.45, { fontSize: 18, color: fg, align: "center", fit: true }),
-        text("Propuesta de servicios cotizados", 1.5, 4.0, 10.3, 0.45, { fontSize: 16, color: muted, align: "center", fit: true }),
+        ...(firstPhoto ? [{ type: "image", src: { kind: "url", value: firstPhoto }, x: 7.1, y: 0.65, w: 5.65, h: 5.85, fit: "cover" }] : []),
+        text(String(location).toUpperCase(), 0.65, 1.85, firstPhoto ? 5.85 : 12.0, 1.15, { fontSize: 54, bold: true, color: accent, align: firstPhoto ? "left" : "center", fit: true }),
+        text(`${company} · ${pax} PAX`, 0.68, 3.18, firstPhoto ? 5.7 : 12.0, 0.45, { fontSize: 18, color: fg, align: firstPhoto ? "left" : "center", fit: true }),
+        text("Propuesta de servicios cotizados", 0.68, 3.83, firstPhoto ? 5.7 : 12.0, 0.45, { fontSize: 16, color: muted, align: firstPhoto ? "left" : "center", fit: true }),
       ],
     },
     {
       bg: light,
       elements: [
         shape(0, 0, 4.25, 7.5, dark),
+        shape(12.95, 0, 0.38, 7.5, accent),
         text("SERVICIOS\nCOTIZADOS", 0.32, 1.1, 3.45, 1.6, { fontSize: 36, bold: true, color: fg, fit: true }),
         text(`${pax} PAX · ${location}`, 0.32, 5.7, 3.4, 0.45, { fontSize: 16, color: muted, italic: true, fit: true }),
-        ...items.slice(0, 4).map((it: any, idx: number) =>
-          text(String(it.servicio ?? "Servicio"), 4.65, 0.85 + idx * 1.15, 7.7, 0.7, {
-            fontSize: 24,
-            bold: true,
-            color: dark,
-            fit: true,
-          }),
-        ),
+        ...items.slice(0, 4).flatMap((it: any, idx: number) => {
+          const y = 0.85 + idx * 1.25;
+          const cur = it.unitCur ?? event.currency ?? "USD";
+          const subtotal = Number(it.subtotal ?? 0);
+          return [
+            shape(4.65, y - 0.12, 7.85, 0.92, "FFFFFF", { line: { color: "FFFFFF", width: 0.5 }, radius: 0.18 }),
+            text(String(it.servicio ?? "Servicio"), 4.9, y, 5.2, 0.36, { fontSize: 18, bold: true, color: dark, fit: true }),
+            text(`${it.pax ?? pax} pax · ${cur} ${subtotal.toLocaleString("en-US")}`, 4.9, y + 0.43, 5.2, 0.28, { fontSize: 12, color: dark, fit: true }),
+          ];
+        }),
       ],
     },
   ];
@@ -162,18 +168,25 @@ function quoteOnlyDeck(input: { deck: any; context: any }) {
     const cur = it.unitCur ?? event.currency ?? "USD";
     const unit = Number(it.unit ?? 0);
     const subtotal = Number(it.subtotal ?? (Number(it.pax ?? pax ?? 0) * unit));
-    const imageEls: any[] = [];
+    const photo = Array.isArray(it.fotos) ? it.fotos[0] : null;
+    const imageEls: any[] = photo
+      ? [
+          shape(7.0, 0.85, 5.75, 4.75, light, { line: { color: light, width: 0.5 } }),
+          { type: "image", src: { kind: "url", value: photo }, x: 7.15, y: 1.0, w: 5.45, h: 4.45, fit: "cover" },
+        ]
+      : [shape(7.0, 0.85, 5.75, 4.75, "214A25", { line: { color: accent, width: 1 } })];
     slides.push({
       bg: dark,
       elements: [
         shape(0, 0, 13.33, 0.18, accent),
-        text(String(it.servicio ?? `Servicio ${idx + 1}`), 0.55, 0.85, 5.9, 1.25, { fontSize: 36, bold: true, color: fg, fit: true }),
-        text(`${Number(it.pax ?? pax ?? 0)} PAX · ${cur} ${unit.toLocaleString("en-US")} / pax`, 0.55, 2.2, 5.7, 0.5, {
+        text(String(it.servicio ?? `Servicio ${idx + 1}`), 0.55, 0.8, 5.9, 1.35, { fontSize: 38, bold: true, color: fg, fit: true }),
+        text(`${Number(it.pax ?? pax ?? 0)} PAX · ${cur} ${unit.toLocaleString("en-US")} / pax`, 0.55, 2.35, 5.7, 0.5, {
           fontSize: 18,
           color: muted,
           fit: true,
         }),
-        text(`SUBTOTAL ${cur} ${subtotal.toLocaleString("en-US")}`, 0.55, 3.05, 5.7, 0.65, { fontSize: 24, bold: true, color: accent, fit: true }),
+        shape(0.55, 5.75, 5.85, 0.92, accent),
+        text(`SUBTOTAL ${cur} ${subtotal.toLocaleString("en-US")}`, 0.75, 5.98, 5.45, 0.42, { fontSize: 22, bold: true, color: dark, fit: true }),
         ...imageEls,
       ],
     });
