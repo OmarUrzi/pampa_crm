@@ -14,19 +14,60 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import mimetypes
 import os
+import random
+import socket
 import sys
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable, TypeVar
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
+
+LOG = logging.getLogger("proposal_slides")
+
+T = TypeVar("T")
+
+# Slides API allows ~60 write requests / minute / project. We additionally
+# back off automatically on HTTP 429 / 5xx via `_retry`.
+RETRYABLE_STATUS = {408, 429, 500, 502, 503, 504}
+MAX_RETRIES = 6
+INITIAL_BACKOFF_SEC = 1.0
+
+
+def _retry(label: str, fn: Callable[[], T]) -> T:
+    """Call `fn`, retrying on transient Google API errors with exponential
+    backoff and jitter. We don't blanket-retry every error: only HTTP codes
+    that Google documents as transient plus socket-level timeouts."""
+    delay = INITIAL_BACKOFF_SEC
+    last_exc: BaseException | None = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            return fn()
+        except HttpError as exc:
+            status = exc.resp.status if getattr(exc, "resp", None) else None
+            if status not in RETRYABLE_STATUS or attempt == MAX_RETRIES:
+                raise
+            last_exc = exc
+        except (TimeoutError, socket.timeout, ConnectionError) as exc:
+            if attempt == MAX_RETRIES:
+                raise
+            last_exc = exc
+        sleep_for = delay + random.uniform(0, delay * 0.25)
+        LOG.warning("%s: transient error (attempt %d/%d) — retrying in %.2fs (%s)",
+                    label, attempt, MAX_RETRIES, sleep_for, last_exc)
+        time.sleep(sleep_for)
+        delay = min(delay * 2, 30.0)
+    # unreachable; either we returned or the last `raise` fired
+    raise last_exc  # type: ignore[misc]
 
 # --------------------------------------------------------------------------- #
 # Style guide — extracted from reference PPTX                                 #
@@ -978,54 +1019,133 @@ def build_credentials() -> Credentials:
     return creds
 
 
-def upload_photo_to_drive(drive, path: Path) -> str:
+def upload_photo_to_drive(
+    drive,
+    path: Path,
+    *,
+    drive_uploads: list[str] | None = None,
+) -> str:
+    """Upload a single image to Drive with anyone-with-link permissions and
+    return a hosted download URL that `slides.createImage` can fetch.
+
+    The caller passes a `drive_uploads` list to track the file IDs created
+    here — `cleanup_drive_uploads` removes them after the presentation has
+    fully baked the images into its own CDN. Empirically (verified before
+    enabling the cleanup) Slides copies images on `createImage` and serves
+    them from `lh*.googleusercontent.com`, so deleting the source file is
+    safe and keeps the agency's Drive clean.
+    """
     mime = mimetypes.guess_type(str(path))[0] or "image/jpeg"
     media = MediaFileUpload(str(path), mimetype=mime, resumable=False)
-    file = drive.files().create(
-        body={"name": f"proposal_photo_{path.name}"},
-        media_body=media,
-        fields="id",
-        supportsAllDrives=True,
-    ).execute()
+    file = _retry(
+        f"drive.files.create({path.name})",
+        lambda: drive.files().create(
+            body={"name": f"proposal_photo_{path.name}"},
+            media_body=media,
+            fields="id",
+            supportsAllDrives=True,
+        ).execute(),
+    )
     file_id = file["id"]
-    drive.permissions().create(
-        fileId=file_id,
-        body={"type": "anyone", "role": "reader"},
-        supportsAllDrives=True,
-    ).execute()
-    # Hosted download URL works for createImage requests.
+    if drive_uploads is not None:
+        drive_uploads.append(file_id)
+    _retry(
+        f"drive.permissions.create({file_id})",
+        lambda: drive.permissions().create(
+            fileId=file_id,
+            body={"type": "anyone", "role": "reader"},
+            supportsAllDrives=True,
+        ).execute(),
+    )
     return f"https://drive.google.com/uc?export=download&id={file_id}"
 
 
+def cleanup_drive_uploads(drive, drive_uploads: list[str]) -> None:
+    """Delete every Drive file we created for image hosting. Safe to call
+    after the Slides export — Slides has already cached its own copy."""
+    for file_id in drive_uploads:
+        try:
+            _retry(
+                f"drive.files.delete({file_id})",
+                lambda fid=file_id: drive.files().delete(
+                    fileId=fid, supportsAllDrives=True,
+                ).execute(),
+            )
+        except Exception as exc:  # don't let cleanup mask the real result
+            LOG.warning("cleanup: failed to delete %s (%s)", file_id, exc)
+
+
+class LogoNotRecolorable(RuntimeError):
+    """Raised when the logo file cannot be safely recolored for a dark bg."""
+
+
 def _recolor_logo_for_dark_bg(src_path: Path, target_hex: str = "#FFFFFF") -> Path:
-    """Recolor a transparent logo so its non-transparent pixels become a
-    target color (default white). This lets us use the agency's single
-    transparent logo on dark cover slides without a backing pill."""
+    """Recolor a logo's ink to `target_hex` so it is legible on a dark cover.
+
+    Strict validation up front: the input MUST be a PNG/GIF/WEBP with a real
+    alpha channel and at least some transparent pixels (i.e. the silhouette
+    is defined by transparency, not by a white box). For a JPG, a fully
+    opaque PNG with a white background, or any other case where naive
+    recoloring would paint over the entire frame, we raise — this used to
+    fail silently and the cover ended up with a dark logo.
+    """
     try:
         from PIL import Image
     except Exception as exc:  # pragma: no cover
-        print(
-            f"[warn] Pillow not available; using logo as-is ({exc})",
-            file=sys.stderr,
+        raise LogoNotRecolorable(f"Pillow is required to recolor logos ({exc})") from exc
+
+    suffix = src_path.suffix.lower()
+    if suffix not in {".png", ".gif", ".webp"}:
+        raise LogoNotRecolorable(
+            f"{src_path.name}: unsupported format {suffix or '?'} — provide a "
+            "transparent PNG/GIF/WEBP for the agency logo."
         )
-        return src_path
+
     img = Image.open(src_path)
-    if "A" not in img.mode:
+    if img.mode not in {"RGBA", "LA", "PA"}:
+        # Some PNGs are saved as RGB+tRNS or P-mode with a transparent index;
+        # convert to RGBA so we can sample alpha. JPGs land in RGB and never
+        # have alpha — they're rejected below by the transparency check.
         img = img.convert("RGBA")
-    target = tuple(int(target_hex.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+
     pixels = img.load()
     w, h = img.size
+    transparent_pixels = 0
+    sampled = 0
+    sample_step = max(1, min(w, h) // 32)
+    for x in range(0, w, sample_step):
+        for y in range(0, h, sample_step):
+            sampled += 1
+            if pixels[x, y][3] == 0:
+                transparent_pixels += 1
+
+    transparent_ratio = transparent_pixels / sampled if sampled else 0.0
+    if transparent_ratio < 0.05:
+        raise LogoNotRecolorable(
+            f"{src_path.name}: logo has no meaningful transparency "
+            f"(only {transparent_ratio:.1%} of sampled pixels are transparent). "
+            "Use a transparent PNG of the logo so we can recolor only the ink."
+        )
+
+    target = tuple(int(target_hex.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
     for x in range(w):
         for y in range(h):
             r, g, b, a = pixels[x, y]
             if a > 0:
                 pixels[x, y] = (target[0], target[1], target[2], a)
+
     out_path = src_path.with_suffix(f".for-dark{src_path.suffix}")
     img.save(out_path)
     return out_path
 
 
-def upload_photos(drive, photos_dir: Path, content: dict) -> dict[str, list[str]]:
+def upload_photos(
+    drive,
+    photos_dir: Path,
+    content: dict,
+    *,
+    drive_uploads: list[str] | None = None,
+) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for group_key in ("transfers", "restaurants", "activities"):
         for item in content.get(group_key) or []:
@@ -1036,20 +1156,29 @@ def upload_photos(drive, photos_dir: Path, content: dict) -> dict[str, list[str]
             for filename in item.get("photos") or []:
                 p = photos_dir / filename
                 if not p.exists():
+                    LOG.warning("photo not found: %s — skipping", p)
                     continue
-                url = upload_photo_to_drive(drive, p)
+                url = upload_photo_to_drive(drive, p, drive_uploads=drive_uploads)
                 uploaded.append(url)
             if uploaded:
                 out[sid] = uploaded
     return out
 
 
-def upload_logo(drive, photos_dir: Path, content: dict) -> str | None:
-    """Upload the agency logo (if present) and return a public URL.
+def upload_logo(
+    drive,
+    photos_dir: Path,
+    content: dict,
+    *,
+    drive_uploads: list[str] | None = None,
+) -> str | None:
+    """Upload the agency logo and return a public URL.
 
-    The transparent agency logo we have is dark navy, which disappears on
-    a dark green cover. Recolor non-transparent pixels to white so the logo
-    is legible without a backing pill.
+    We try to recolor the logo's ink to white so it sits cleanly on the
+    dark cover. If the file isn't a transparent raster (JPG, PNG with a
+    white background, etc.) the recolor is skipped with a loud warning
+    and the original is uploaded as-is — `build_cover_slide` then has to
+    place it on a contrasting backing.
     """
     agency = content.get("agency") or {}
     logo_filename = agency.get("logo")
@@ -1057,18 +1186,32 @@ def upload_logo(drive, photos_dir: Path, content: dict) -> str | None:
         return None
     logo_path = photos_dir / logo_filename
     if not logo_path.exists():
+        LOG.warning("Agency logo file not found at %s — skipping logo", logo_path)
         return None
-    light_logo_path = _recolor_logo_for_dark_bg(logo_path, target_hex="#FFFFFF")
-    return upload_photo_to_drive(drive, light_logo_path)
+
+    try:
+        prepared_path = _recolor_logo_for_dark_bg(logo_path, target_hex="#FFFFFF")
+    except LogoNotRecolorable as exc:
+        LOG.warning(
+            "Logo not recolored (%s); uploading the original. "
+            "It may be hard to read on the dark cover.", exc,
+        )
+        prepared_path = logo_path
+
+    return upload_photo_to_drive(drive, prepared_path, drive_uploads=drive_uploads)
 
 
 def render_slide(slides_api, presentation_id: str, plan: SlidePlan) -> None:
+    """Render one slide via a single batchUpdate, retrying transient errors."""
     requests: list[dict] = []
     page_id = add_blank_slide(requests)
     plan.build(requests, page_id)
-    slides_api.presentations().batchUpdate(
-        presentationId=presentation_id, body={"requests": requests}
-    ).execute()
+    _retry(
+        f"slides.batchUpdate[{plan.title}]",
+        lambda: slides_api.presentations().batchUpdate(
+            presentationId=presentation_id, body={"requests": requests},
+        ).execute(),
+    )
 
 
 def build_presentation(
@@ -1105,18 +1248,27 @@ def build_presentation(
         ).execute()
 
     plans = plan_presentation(content, photos, logo_url=logo_url)
+    failures: list[dict] = []
     for plan in plans:
-        render_slide(slides_api, presentation_id, plan)
-        time.sleep(0.05)  # gentle on quota
+        try:
+            render_slide(slides_api, presentation_id, plan)
+        except Exception as exc:  # noqa: BLE001 — capture per-slide
+            LOG.error("slide failed: %s — %s", plan.title, exc)
+            failures.append({"slide": plan.title, "error": repr(exc)})
+            # we deliberately keep going so the rest of the deck is still
+            # produced; the caller decides what to do with `failures`.
 
     folder_id = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
     if folder_id:
-        drive_api.files().update(
-            fileId=presentation_id,
-            addParents=folder_id,
-            fields="id,parents",
-            supportsAllDrives=True,
-        ).execute()
+        _retry(
+            "drive.files.update(folder)",
+            lambda: drive_api.files().update(
+                fileId=presentation_id,
+                addParents=folder_id,
+                fields="id,parents",
+                supportsAllDrives=True,
+            ).execute(),
+        )
 
     return {
         "presentationId": presentation_id,
@@ -1124,14 +1276,18 @@ def build_presentation(
         "drive_api": drive_api,
         "slides_api": slides_api,
         "plans": [p.title for p in plans],
+        "failures": failures,
     }
 
 
 def export_pptx(drive_api, presentation_id: str, out_path: Path) -> None:
-    response = drive_api.files().export(
-        fileId=presentation_id,
-        mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    ).execute()
+    response = _retry(
+        "drive.files.export(pptx)",
+        lambda: drive_api.files().export(
+            fileId=presentation_id,
+            mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ).execute(),
+    )
     out_path.write_bytes(response)
 
 
@@ -1146,7 +1302,16 @@ def main() -> None:
     parser.add_argument("--photos-dir", default="scripts/proposal_slides_input/photos")
     parser.add_argument("--export-pptx", default="scripts/proposal_slides_output/proposal.pptx")
     parser.add_argument("--title", default=None)
+    parser.add_argument(
+        "--keep-drive-uploads", action="store_true",
+        help="Skip the post-export cleanup of the public Drive copies of "
+             "photos/logo. Useful when debugging createImage failures.",
+    )
+    parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
+
+    logging.basicConfig(level=args.log_level.upper(),
+                        format="%(asctime)s %(levelname)s %(name)s :: %(message)s")
 
     content_path = Path(args.content)
     photos_dir = Path(args.photos_dir)
@@ -1160,21 +1325,41 @@ def main() -> None:
 
     creds = build_credentials()
     drive_api = build("drive", "v3", credentials=creds, cache_discovery=False)
-    photos = upload_photos(drive_api, photos_dir, content)
-    logo_url = upload_logo(drive_api, photos_dir, content)
 
-    result = build_presentation(content, photos, title=args.title, logo_url=logo_url)
-    export_path = Path(args.export_pptx)
-    export_path.parent.mkdir(parents=True, exist_ok=True)
-    export_pptx(result["drive_api"], result["presentationId"], export_path)
+    drive_uploads: list[str] = []
+    summary: dict[str, Any] = {}
+    try:
+        photos = upload_photos(drive_api, photos_dir, content,
+                               drive_uploads=drive_uploads)
+        logo_url = upload_logo(drive_api, photos_dir, content,
+                               drive_uploads=drive_uploads)
 
-    summary = {
-        "presentationId": result["presentationId"],
-        "url": result["url"],
-        "pptx": str(export_path),
-        "slides": result["plans"],
-    }
+        result = build_presentation(
+            content, photos, title=args.title, logo_url=logo_url,
+        )
+        export_path = Path(args.export_pptx)
+        export_path.parent.mkdir(parents=True, exist_ok=True)
+        export_pptx(result["drive_api"], result["presentationId"], export_path)
+
+        summary = {
+            "presentationId": result["presentationId"],
+            "url": result["url"],
+            "pptx": str(export_path),
+            "slides": result["plans"],
+            "failures": result["failures"],
+            "driveUploads": len(drive_uploads),
+        }
+    finally:
+        if drive_uploads and not args.keep_drive_uploads:
+            cleanup_drive_uploads(drive_api, drive_uploads)
+            summary["driveUploadsCleanedUp"] = len(drive_uploads)
+        elif drive_uploads:
+            summary["driveUploadsKept"] = drive_uploads
+
     print(json.dumps(summary, indent=2, ensure_ascii=False))
+    if summary.get("failures"):
+        # Non-zero exit signals the caller (CRM job, CI) to investigate.
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":
