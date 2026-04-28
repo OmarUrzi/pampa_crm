@@ -127,6 +127,8 @@ export const DeckV2Schema = z.object({
 
 export type DeckV2 = z.infer<typeof DeckV2Schema>;
 
+type FitMode = "cover" | "contain" | undefined;
+
 function safeHex(x: string | undefined, fallback: string) {
   const s = String(x ?? "").trim().replace(/^#/, "");
   return /^[0-9a-fA-F]{6}$/.test(s) ? s.toUpperCase() : fallback;
@@ -163,6 +165,10 @@ function extFromMime(mime: string | undefined) {
 function dataUriFromBytes(bytes: Uint8Array, mime: string) {
   const b64 = Buffer.from(bytes as any).toString("base64");
   return `data:${mime};base64,${b64}`;
+}
+
+function imageSizing(fit: FitMode, box: { w: number; h: number }) {
+  return { type: fit === "contain" ? "contain" : "cover", w: box.w, h: box.h };
 }
 
 async function resolveImageDataUri(input: {
@@ -322,10 +328,7 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
               y: cursorY,
               w: innerW,
               h: imgH,
-              sizing:
-                el.image.fit === "contain"
-                  ? { type: "contain", w: innerW, h: imgH }
-                  : { type: "crop", w: innerW, h: imgH },
+              sizing: { type: el.image.fit === "contain" ? "contain" : "cover", w: innerW, h: imgH },
             } as any);
           } catch {
             slide.addShape(pptx.ShapeType.roundRect as any, {
@@ -459,8 +462,7 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
         slide.addImage({
           data: cached.data,
           ...box,
-          sizing:
-            el.fit === "contain" ? { type: "contain", w: box.w, h: box.h } : { type: "crop", w: box.w, h: box.h },
+          sizing: { type: el.fit === "contain" ? "contain" : "cover", w: box.w, h: box.h },
         } as any);
       } catch {
         // Fallback placeholder
