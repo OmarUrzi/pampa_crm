@@ -167,13 +167,36 @@ function dataUriFromBytes(bytes: Uint8Array, mime: string) {
   return `data:${mime};base64,${b64}`;
 }
 
-function imageSizing(fit: FitMode, box: { w: number; h: number }) {
-  return { type: fit === "contain" ? "contain" : "cover", w: box.w, h: box.h };
+function imageSize(bytes: Uint8Array, mime: string): { w: number; h: number } | null {
+  const b = Buffer.from(bytes as any);
+  const m = String(mime ?? "").toLowerCase();
+  if (m.includes("png") && b.length >= 24 && b.toString("ascii", 1, 4) === "PNG") {
+    return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
+  }
+  if ((m.includes("jpeg") || m.includes("jpg")) && b.length > 4) {
+    let i = 2;
+    while (i + 9 < b.length) {
+      if (b[i] !== 0xff) break;
+      const marker = b[i + 1];
+      const len = b.readUInt16BE(i + 2);
+      if (marker >= 0xc0 && marker <= 0xc3) return { h: b.readUInt16BE(i + 5), w: b.readUInt16BE(i + 7) };
+      i += 2 + len;
+    }
+  }
+  return null;
+}
+
+function containPlacement(box: { x: number; y: number; w: number; h: number }, img?: { w: number; h: number } | null) {
+  if (!img?.w || !img?.h) return box;
+  const scale = Math.min(box.w / img.w, box.h / img.h);
+  const w = img.w * scale;
+  const h = img.h * scale;
+  return { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h };
 }
 
 async function resolveImageDataUri(input: {
   src: { kind: "anthropic_file" | "url"; value: string; mime?: string };
-  imageCache: Map<string, { mime: string; data: string }>;
+  imageCache: Map<string, { mime: string; data: string; size: { w: number; h: number } | null }>;
 }) {
   const cacheKey = `${input.src.kind}:${input.src.value}`;
   const cached = input.imageCache.get(cacheKey);
@@ -184,8 +207,9 @@ async function resolveImageDataUri(input: {
     const hintMime = String(input.src.mime ?? "").trim();
     const downloaded = await downloadFileFromAnthropic({ fileId });
     const mime = hintMime || downloaded.mime || "image/png";
-    const data = dataUriFromBytes(new Uint8Array(downloaded.bytes), mime);
-    const resolved = { mime, data };
+    const bytes = new Uint8Array(downloaded.bytes);
+    const data = dataUriFromBytes(bytes, mime);
+    const resolved = { mime, data, size: imageSize(bytes, mime) };
     input.imageCache.set(cacheKey, resolved);
     return resolved;
   }
@@ -194,8 +218,9 @@ async function resolveImageDataUri(input: {
   if (!res.ok) throw new Error(`image url fetch failed: ${res.status}`);
   const ab = await res.arrayBuffer();
   const mime = res.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
-  const data = dataUriFromBytes(new Uint8Array(ab), mime);
-  const resolved = { mime, data };
+  const bytes = new Uint8Array(ab);
+  const data = dataUriFromBytes(bytes, mime);
+  const resolved = { mime, data, size: imageSize(bytes, mime) };
   input.imageCache.set(cacheKey, resolved);
   return resolved;
 }
@@ -243,7 +268,7 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
   const FONT = (theme.font ?? "").trim() || undefined;
 
   // Cache external image bytes so repeated references don't re-download.
-  const imageCache = new Map<string, { mime: string; data: string }>();
+  const imageCache = new Map<string, { mime: string; data: string; size: { w: number; h: number } | null }>();
 
   for (const s of deck.slides) {
     const slide = pptx.addSlide();
@@ -322,13 +347,10 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
           const imgH = Math.min(2.2, Math.max(1.2, box.h * 0.45));
           try {
             const img = await resolveImageDataUri({ src: el.image.src, imageCache });
+            const imgBox = containPlacement({ x: innerX, y: cursorY, w: innerW, h: imgH }, img.size);
             slide.addImage({
               data: img.data,
-              x: innerX,
-              y: cursorY,
-              w: innerW,
-              h: imgH,
-              sizing: { type: el.image.fit === "contain" ? "contain" : "cover", w: innerW, h: imgH },
+              ...imgBox,
             } as any);
           } catch {
             slide.addShape(pptx.ShapeType.roundRect as any, {
@@ -459,10 +481,21 @@ export async function deckV2ToPptxBuffer(deckJson: unknown) {
         const box = clampBox(el);
         const cached = await resolveImageDataUri({ src: el.src, imageCache });
 
+        const imgBox = containPlacement(box, cached.size);
+        if (el.fit === "contain" && box.w <= 2.5 && box.h <= 1.2) {
+          slide.addShape(pptx.ShapeType.roundRect as any, {
+            x: box.x - 0.08,
+            y: box.y - 0.06,
+            w: box.w + 0.16,
+            h: box.h + 0.12,
+            fill: { color: "FFFFFF", transparency: 6 },
+            line: { color: "FFFFFF", transparency: 100 },
+            radius: 0.12,
+          } as any);
+        }
         slide.addImage({
           data: cached.data,
-          ...box,
-          sizing: { type: el.fit === "contain" ? "contain" : "cover", w: box.w, h: box.h },
+          ...imgBox,
         } as any);
       } catch {
         // Fallback placeholder
