@@ -77,8 +77,133 @@ function apiAbsUrl(path: string) {
 }
 
 function moneyLabel(cur: string, amount: number) {
-  const prefix = cur === "ARS" ? "$" : "U$D";
+  const prefix = cur === "ARS" ? "$" : "USD";
   return `${prefix} ${Number(amount ?? 0).toLocaleString("en-US")}`;
+}
+
+function quoteOnlyDeck(input: { deck: any; context: any }) {
+  const ctx = input.context;
+  const items = Array.isArray(ctx?.cotizacion?.items) ? ctx.cotizacion.items : [];
+  const event = ctx?.evento ?? {};
+  const agencyAssets = Array.isArray(ctx?.agencia?.assets) ? ctx.agencia.assets : [];
+  const logo =
+    agencyAssets.find((a: any) => a.kind === "logo_wide" && a.blobUrl) ??
+    agencyAssets.find((a: any) => a.kind === "logo_square" && a.blobUrl) ??
+    null;
+  const total = Number(ctx?.cotizacion?.total ?? 0);
+  // Quote-only decks keep a stable agency-like palette; Claude may return random
+  // accent colors that create inconsistent borders.
+  const bg = "1A3A1A";
+  const fg = "FFFFFF";
+  const muted = "C8B87A";
+  const accent = "C8A020";
+  const theme = { bg, fg, muted, accent, font: "Georgia" };
+  const light = "F5F0E8";
+  const dark = bg || "1A3A1A";
+  const title = `${event.nombre ?? "Cotización"} — ${event.locacion ?? ""}`.trim();
+  const pax = event.pax ?? "—";
+  const location = event.locacion ?? "—";
+  const company = event.empresa ?? "—";
+
+  const text = (text: string, x: number, y: number, w: number, h: number, opts: any = {}) => ({
+    type: "text",
+    text,
+    x,
+    y,
+    w,
+    h,
+    ...opts,
+  });
+  const shape = (x: number, y: number, w: number, h: number, fill: string, opts: any = {}) => ({
+    type: "shape",
+    shape: "rect",
+    x,
+    y,
+    w,
+    h,
+    fill,
+    ...opts,
+  });
+  const logoEl = logo?.blobUrl
+    ? [{ type: "image", src: { kind: "url", value: logo.blobUrl, mime: logo.mime ?? undefined }, x: 0.45, y: 0.32, w: 2.1, h: 0.72, fit: "contain" }]
+    : [];
+
+  const slides: any[] = [
+    {
+      bg: dark,
+      preset: { kind: "cover", variant: "hero-bottom" },
+      elements: [
+        shape(0, 0, 13.33, 0.18, accent),
+        ...logoEl,
+        text(String(location).toUpperCase(), 1.0, 2.1, 11.3, 1.15, { fontSize: 54, bold: true, color: accent, align: "center", fit: true }),
+        text(`${company} · ${pax} PAX`, 1.5, 3.35, 10.3, 0.45, { fontSize: 18, color: fg, align: "center", fit: true }),
+        text("Propuesta de servicios cotizados", 1.5, 4.0, 10.3, 0.45, { fontSize: 16, color: muted, align: "center", fit: true }),
+      ],
+    },
+    {
+      bg: light,
+      elements: [
+        shape(0, 0, 4.25, 7.5, dark),
+        text("SERVICIOS\nCOTIZADOS", 0.32, 1.1, 3.45, 1.6, { fontSize: 36, bold: true, color: fg, fit: true }),
+        text(`${pax} PAX · ${location}`, 0.32, 5.7, 3.4, 0.45, { fontSize: 16, color: muted, italic: true, fit: true }),
+        ...items.slice(0, 4).map((it: any, idx: number) =>
+          text(String(it.servicio ?? "Servicio"), 4.65, 0.85 + idx * 1.15, 7.7, 0.7, {
+            fontSize: 24,
+            bold: true,
+            color: dark,
+            fit: true,
+          }),
+        ),
+      ],
+    },
+  ];
+
+  for (const [idx, it] of items.entries()) {
+    const cur = it.unitCur ?? event.currency ?? "USD";
+    const unit = Number(it.unit ?? 0);
+    const subtotal = Number(it.subtotal ?? (Number(it.pax ?? pax ?? 0) * unit));
+    const imageEls: any[] = [];
+    slides.push({
+      bg: dark,
+      elements: [
+        shape(0, 0, 13.33, 0.18, accent),
+        text(String(it.servicio ?? `Servicio ${idx + 1}`), 0.55, 0.85, 5.9, 1.25, { fontSize: 36, bold: true, color: fg, fit: true }),
+        text(`${Number(it.pax ?? pax ?? 0)} PAX · ${cur} ${unit.toLocaleString("en-US")} / pax`, 0.55, 2.2, 5.7, 0.5, {
+          fontSize: 18,
+          color: muted,
+          fit: true,
+        }),
+        text(`SUBTOTAL ${cur} ${subtotal.toLocaleString("en-US")}`, 0.55, 3.05, 5.7, 0.65, { fontSize: 24, bold: true, color: accent, fit: true }),
+        ...imageEls,
+      ],
+    });
+  }
+
+  slides.push({
+    bg: light,
+    elements: [
+      shape(0, 0, 13.33, 0.18, accent),
+      text("RESUMEN DE INVERSIÓN", 0.7, 0.8, 11.8, 0.75, { fontSize: 34, bold: true, color: dark, align: "center", fit: true }),
+      ...items.slice(0, 6).map((it: any, idx: number) => {
+        const cur = it.unitCur ?? event.currency ?? "USD";
+        const subtotal = Number(it.subtotal ?? 0);
+        return text(`${it.servicio} · ${it.pax ?? pax} pax · ${cur} ${subtotal.toLocaleString("en-US")}`, 1.0, 2.0 + idx * 0.55, 11.3, 0.42, {
+          fontSize: 18,
+          color: dark,
+          fit: true,
+        });
+      }),
+        text(`TOTAL ${(event.currency ?? "USD") === "ARS" ? "$" : "USD"} ${total.toLocaleString("en-US")}`, 1.0, 5.55, 11.3, 0.85, {
+          fontSize: 38,
+          bold: true,
+          color: dark,
+          align: "center",
+          fit: true,
+        }),
+    ],
+  });
+
+  return { version: 2, title, theme: { ...theme, bg, fg, muted, accent }, slides };
 }
 
 export async function registerSlidesEventoRoutes(app: FastifyInstance) {
@@ -159,7 +284,6 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
         subtotal: typeof it.pax === "number" && typeof it.unit === "number" ? it.pax * it.unit : null,
         fotos,
         fotosAnthropicFileIds,
-        descripcion: act?.descripcion ?? null,
       };
     });
 
@@ -242,6 +366,14 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       "- DATOS CANÓNICOS: usá solamente CONTEXT_JSON para pax, fecha, locación, servicios, precios y totales.",
       "- No copies pax/fechas de la guía visual. Si la guía dice otro pax o fecha, ignoralo.",
       `- Para este pedido, el PAX canónico es ${evento.pax ?? "el indicado en CONTEXT_JSON"}.`,
+      "- CONTENIDO ESTRICTO: la guía adjunta es SOLO referencia visual (layout, paleta, ritmo, tipografía).",
+      "- No copies texto, agenda, servicios, actividades, títulos, disclaimers, condiciones comerciales ni datos de cliente desde la guía visual.",
+      "- No agregues servicios, inclusiones, vehículos, excursiones, actividades, cronogramas ni condiciones que no estén en CONTEXT_JSON.",
+      "- No infieras inclusiones a partir del nombre del servicio. Ej: si el item se llama 'Servicio de Traslado', NO inventes aeropuerto, hotel, restaurantes, excursiones, vehículos, equipaje ni logística.",
+      "- No infieras inclusiones a partir de 'Clase Ski'. NO inventes instructores, niveles, alquiler, medios de elevación, duración ni formatos si no aparecen literalmente en CONTEXT_JSON.",
+      "- Las slides de servicio solo pueden usar estos datos del item: servicio, proveedor, pax, unitCur, unit, subtotal y fotos. Si no hay descripción explícita en el item, no agregues descripción ni bullets de inclusiones.",
+      "- La slide de introducción/resumen solo puede listar alcance general del evento y nombres de servicios cotizados; no agregues contenido del guide.",
+      "- No agregues condiciones comerciales salvo que estén literalmente en CONTEXT_JSON. Evitá frases como 'tarifas netas', 'vigencia', 'propinas', 'gastos bancarios', 'recargos', 'no reembolso'.",
       "",
       "REGLAS DE DISEÑO (estilo \"Pampa\" moderno):",
       "- Portada: logo arriba izq, título grande, subtítulo, y una foto hero a la derecha o abajo.",
@@ -249,8 +381,8 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       "- Ítems cotizados: cards con foto (cover), título, proveedor, pax, precio, bullets; máximo 4 por slide.",
       "- Jerarquía tipográfica: título 40-52, subtítulos 18-22, cuerpo 14-18.",
       "- Usá theme oscuro por defecto (bg oscuro, texto claro, accent violeta/azul).",
-      "- Si se adjunta una guía PPTX/PDF, priorizá su dirección visual: paleta, ritmo, composición, uso de logos, tipo de portada y estilo de slides.",
-      "- No inventes una identidad visual genérica si hay guía adjunta; adaptá el contenido del evento al look & feel de esa guía.",
+      "- Si hay una guía visual/de marca cargada, usala solo como inspiración de layout: paleta, ritmo, composición, uso de logos, tipo de portada y estilo de slides.",
+      "- No inventes una identidad visual genérica; mantené un look & feel consistente con la agencia, sin copiar contenido de archivos guía.",
       "- ESTRUCTURA: cada item de cotización debe tener su propia diapositiva de servicio; no agrupes dos o más servicios en una misma slide.",
       "- Podés usar una slide adicional de resumen/inversión, pero las slides de servicios deben ser individuales.",
       "- No uses rótulos genéricos como 'ACTIVIDAD 01', 'SERVICIO 02' o similares: el título principal de cada slide de servicio debe ser el nombre real del servicio.",
@@ -272,13 +404,9 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
     ].join("\n");
 
     const attachments: any[] = [];
-    // Attach guide/logos/photos if they were synced to Anthropic Files API.
-    // PPTX guides are converted to PDF before upload; legacy rows may still store
-    // the original PPTX mime locally, but the Anthropic file_id points to the PDF.
-    const guide = agencyAssets.find((a) => a.kind === "pptx_guide" && a.anthropicFileId) ?? null;
-    if (guide?.anthropicFileId) {
-      attachments.push({ type: "document", source: { type: "file", file_id: guide.anthropicFileId } });
-    }
+    // Do not attach the PPTX/PDF guide to generation: Claude can read its text and
+    // copy guide-only services/conditions into the quote. Keep the guide as visual
+    // inspiration in the prompt, but make CONTEXT_JSON the only content source.
     const logo = (logoWide?.anthropicFileId ? logoWide : logoSquare?.anthropicFileId ? logoSquare : null) as any;
     if (logo?.anthropicFileId) {
       attachments.push({
@@ -374,7 +502,9 @@ export async function registerSlidesEventoRoutes(app: FastifyInstance) {
       return reply.code(502).send({ error: "ai_parse_error", message: "Claude devolvió un JSON inválido." });
     }
 
-    // For DeckV2, the renderer consumes explicit elements; we don't patch logo into the deck here.
+    // Claude may still infer content from service names. Keep its visual theme, but
+    // rebuild slide content from CONTEXT_JSON so the quote stays source-of-truth.
+    deck = quoteOnlyDeck({ deck, context });
 
     // Always log what Claude returned (to avoid losing paid output).
     // eslint-disable-next-line no-console
