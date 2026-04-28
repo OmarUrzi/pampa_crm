@@ -73,18 +73,48 @@ FONTS = {
 # --------------------------------------------------------------------------- #
 
 EMU_PER_INCH = 914400
-SLIDE_W_IN = 13.333
-SLIDE_H_IN = 7.5
+
+# Default canvas. Google Slides currently ignores pageSize on create and uses
+# 10" x 5.625", so we recompute these constants at runtime from the actual
+# presentation size (set_canvas) and use them as the basis for every layout.
+SLIDE_W_IN = 10.0
+SLIDE_H_IN = 5.625
 
 
 def emu(inches: float) -> int:
     return int(round(inches * EMU_PER_INCH))
 
 
-SLIDE_SIZE_EMU = {
-    "width":  {"magnitude": emu(SLIDE_W_IN), "unit": "EMU"},
-    "height": {"magnitude": emu(SLIDE_H_IN), "unit": "EMU"},
-}
+# Scale factors mapping our 13.333 x 7.5 design grid to the live canvas.
+SCALE_X = 1.0
+SCALE_Y = 1.0
+DESIGN_W_IN = 13.333
+DESIGN_H_IN = 7.5
+
+
+def set_canvas(width_in: float, height_in: float) -> None:
+    """Update slide width/height that all layout helpers reference and
+    derive the scale factors that map the 13.333 x 7.5 design grid to it."""
+    global SLIDE_W_IN, SLIDE_H_IN, SCALE_X, SCALE_Y
+    SLIDE_W_IN = width_in
+    SLIDE_H_IN = height_in
+    SCALE_X = width_in / DESIGN_W_IN
+    SCALE_Y = height_in / DESIGN_H_IN
+
+
+def sx(value: float) -> float:
+    """Map an inch coordinate from the 13.333" design grid to the canvas."""
+    return value * SCALE_X
+
+
+def sy(value: float) -> float:
+    """Map an inch coordinate from the 7.5" design grid to the canvas."""
+    return value * SCALE_Y
+
+
+def sf(value: float) -> float:
+    """Scale a point/pt font size proportionally with the canvas."""
+    return value * min(SCALE_X, SCALE_Y)
 
 
 # --------------------------------------------------------------------------- #
@@ -97,15 +127,18 @@ def _new_id(prefix: str) -> str:
 
 
 def _element_props(page_id: str, x: float, y: float, w: float, h: float) -> dict:
+    """Inputs are inches on the 13.333 x 7.5 design grid; we scale them to
+    the live Google Slides canvas (often 10 x 5.625) here so every helper
+    can stay grid-agnostic."""
     return {
         "pageObjectId": page_id,
         "size": {
-            "width":  {"magnitude": emu(w), "unit": "EMU"},
-            "height": {"magnitude": emu(h), "unit": "EMU"},
+            "width":  {"magnitude": emu(sx(w)), "unit": "EMU"},
+            "height": {"magnitude": emu(sy(h)), "unit": "EMU"},
         },
         "transform": {
             "scaleX": 1, "scaleY": 1,
-            "translateX": emu(x), "translateY": emu(y),
+            "translateX": emu(sx(x)), "translateY": emu(sy(y)),
             "unit": "EMU",
         },
     }
@@ -176,6 +209,7 @@ def add_text(
     align: str = "left",
     line_spacing: float = 115.0,
     letter_spacing: float | None = None,
+    opacity: float | None = None,
 ) -> str:
     """Text box with explicit font, size, bold, color, alignment."""
     obj_id = _new_id("text")
@@ -187,16 +221,25 @@ def add_text(
         }
     })
     requests.append({"insertText": {"objectId": obj_id, "text": text}})
+    foreground: dict[str, Any] = {"opaqueColor": {"rgbColor": color}}
     style: dict[str, Any] = {
         "fontFamily": font["family"],
-        "fontSize": {"magnitude": font["size"], "unit": "PT"},
+        "fontSize": {"magnitude": sf(font["size"]), "unit": "PT"},
         "bold": bool(font.get("bold")),
         "italic": bool(font.get("italic")),
-        "foregroundColor": {"opaqueColor": {"rgbColor": color}},
+        "foregroundColor": foreground,
     }
-    fields = "fontFamily,fontSize,bold,italic,foregroundColor"
+    fields_parts = ["fontFamily", "fontSize", "bold", "italic", "foregroundColor"]
     if letter_spacing is not None:
-        style["weightedFontFamily"] = {"fontFamily": font["family"], "weight": 700 if font.get("bold") else 400}
+        # Slides reads `weightedFontFamily.weight` (100..900). For simulating
+        # tracked-out caps we adjust the per-character spacing via the
+        # paragraph style below, not here.
+        style["weightedFontFamily"] = {
+            "fontFamily": font["family"],
+            "weight": 700 if font.get("bold") else 400,
+        }
+        fields_parts.append("weightedFontFamily")
+    fields = ",".join(fields_parts)
     requests.append({
         "updateTextStyle": {
             "objectId": obj_id,
@@ -205,6 +248,24 @@ def add_text(
             "fields": fields,
         }
     })
+    if opacity is not None and 0.0 <= opacity < 1.0:
+        # Approximate "transparent text" by mixing the foreground color with
+        # the slide background tone: a 0..1 opacity blends it toward dark.
+        # We only use this for the cover watermark.
+        bg = COLORS["dark"]
+        mix_color = {
+            "red":   bg["red"]   + (color["red"]   - bg["red"])   * opacity,
+            "green": bg["green"] + (color["green"] - bg["green"]) * opacity,
+            "blue":  bg["blue"]  + (color["blue"]  - bg["blue"])  * opacity,
+        }
+        requests.append({
+            "updateTextStyle": {
+                "objectId": obj_id,
+                "textRange": {"type": "ALL"},
+                "style": {"foregroundColor": {"opaqueColor": {"rgbColor": mix_color}}},
+                "fields": "foregroundColor",
+            }
+        })
     requests.append({
         "updateParagraphStyle": {
             "objectId": obj_id,
@@ -248,12 +309,19 @@ def add_blank_slide(requests: list[dict], slide_id: str | None = None) -> str:
 
 
 def fill_background(requests: list[dict], page_id: str, color: dict) -> None:
-    add_rect(requests, page_id, 0, 0, SLIDE_W_IN, SLIDE_H_IN, color)
+    # Always span the full design grid so the rect covers the entire canvas
+    # after scaling.
+    add_rect(requests, page_id, 0, 0, DESIGN_W_IN, DESIGN_H_IN, color)
 
 
-def gold_top_bottom_borders(requests: list[dict], page_id: str, thickness_in: float = 0.18) -> None:
-    add_rect(requests, page_id, 0, 0, SLIDE_W_IN, thickness_in, COLORS["gold"])
-    add_rect(requests, page_id, 0, SLIDE_H_IN - thickness_in, SLIDE_W_IN, thickness_in, COLORS["gold"])
+def gold_top_bottom_borders(requests: list[dict], page_id: str, thickness_in: float = 0.10) -> None:
+    add_rect(requests, page_id, 0, 0, DESIGN_W_IN, thickness_in, COLORS["gold"])
+    add_rect(requests, page_id, 0, DESIGN_H_IN - thickness_in, DESIGN_W_IN, thickness_in, COLORS["gold"])
+
+
+def margin(value: float = 0.6) -> float:
+    """Side margin in inches on the 13.333" design grid (helpers scale)."""
+    return value
 
 
 # --------------------------------------------------------------------------- #
@@ -267,48 +335,106 @@ class SlidePlan:
     build: callable  # (requests: list, page_id: str) -> None
 
 
-def build_cover_slide(content: dict) -> SlidePlan:
+def build_cover_slide(content: dict, logo_url: str | None = None) -> SlidePlan:
     def _build(requests: list[dict], page_id: str) -> None:
+        # All coordinates here are in inches on the 13.333 x 7.5 design grid.
+        # Helpers scale them down to the live Google Slides canvas.
+        W, H = DESIGN_W_IN, DESIGN_H_IN
+
         fill_background(requests, page_id, COLORS["dark"])
-        gold_top_bottom_borders(requests, page_id, 0.20)
+        # Thin gold borders flush with top + bottom edges.
+        add_rect(requests, page_id, 0, 0,        W, 0.10, COLORS["gold"])
+        add_rect(requests, page_id, 0, H - 0.10, W, 0.10, COLORS["gold"])
 
         agency = content.get("agency", {}) or {}
         client = content.get("client", "")
-        destination = content.get("destination", "")
+        destination = (content.get("destination") or "").strip()
         date = content.get("date") or ""
 
+        # Top-left agency logo on a cream pill (legible against dark bg).
+        if logo_url:
+            add_rect(requests, page_id, 0.45, 0.45, 2.55, 0.95, COLORS["cream"])
+            add_image(requests, page_id, logo_url, 0.55, 0.53, 2.35, 0.78)
+        elif agency.get("name"):
+            add_text(
+                requests, page_id, agency["name"],
+                0.55, 0.55, 4.0, 0.5,
+                font={"family": "Georgia", "size": 16, "italic": True},
+                color=COLORS["muted"], align="left",
+            )
+            if agency.get("tagline"):
+                add_text(
+                    requests, page_id, agency["tagline"],
+                    0.55, 1.0, 4.0, 0.4,
+                    font={"family": "Georgia", "size": 14, "italic": True},
+                    color=COLORS["muted"], align="left",
+                )
+
+        # Title: split destination into a small uppercase prefix + one
+        # large gold word ("SAN CARLOS DE" / "BARILOCHE").
+        words = destination.split()
+        if len(words) >= 2:
+            prefix = " ".join(words[:-1]).upper()
+            keyword = words[-1].upper()
+        else:
+            prefix = ""
+            keyword = destination.upper()
+
+        if prefix:
+            add_text(
+                requests, page_id, prefix,
+                0.6, 1.95, 12.13, 0.6,
+                font={"family": "Georgia", "size": 26, "bold": False},
+                color=COLORS["white"], align="center",
+            )
+
+        # Faint background watermark of the keyword.
         add_text(
-            requests, page_id, agency.get("name", "").upper(),
-            0.6, 0.55, 12.13, 0.5,
-            font=FONTS["overline"], color=COLORS["gold"], align="left",
+            requests, page_id, keyword,
+            0, 3.05, W, 1.85,
+            font={"family": "Georgia", "size": 112, "bold": True},
+            color=COLORS["white"], align="center", opacity=0.08,
         )
 
+        # Foreground gold keyword.
         add_text(
-            requests, page_id, destination.upper() if destination else "",
-            0.6, 2.4, 12.13, 1.8,
-            font=FONTS["title_xl"], color=COLORS["white"], align="center",
+            requests, page_id, keyword,
+            0.6, 2.55, 12.13, 1.45,
+            font={"family": "Georgia", "size": 76, "bold": True},
+            color=COLORS["gold"], align="center",
         )
-        if client:
-            add_text(
-                requests, page_id, f"Propuesta para {client}",
-                0.6, 4.3, 12.13, 0.55,
-                font={**FONTS["subtitle"], "italic": True}, color=COLORS["muted"], align="center",
-            )
+
+        # Decorative gold rule under the keyword.
+        add_rect(requests, page_id, 4.5, 4.05, 4.33, 0.025, COLORS["gold"])
+
         if date:
             add_text(
-                requests, page_id, date,
-                0.6, 5.0, 12.13, 0.45,
-                font=FONTS["body"], color=COLORS["muted"], align="center",
+                requests, page_id, date.upper(),
+                0.6, 4.25, 12.13, 0.45,
+                font={"family": "Georgia", "size": 16, "bold": False},
+                color=COLORS["white"], align="center",
             )
 
-        # footer agency tagline
-        tagline = agency.get("tagline") or ""
-        if tagline:
+        if client:
             add_text(
-                requests, page_id, tagline,
-                0.6, 6.55, 12.13, 0.4,
-                font={**FONTS["body_small"], "italic": True}, color=COLORS["muted"], align="center",
+                requests, page_id,
+                f"Propuesta de servicios exclusivos para {client}",
+                0.6, 5.05, 12.13, 0.5,
+                font={"family": "Georgia", "size": 17, "italic": True},
+                color=COLORS["muted"], align="center",
             )
+
+        validity = content.get("validity_days")
+        currency_note = content.get("currency_note") or "Tarifas netas con IVA incluido"
+        footer_bits = [currency_note]
+        if validity:
+            footer_bits.append(f"Vigencia {validity} días")
+        add_text(
+            requests, page_id, "  ·  ".join(footer_bits),
+            0.6, H - 0.5, 12.13, 0.35,
+            font={"family": "Calibri", "size": 11, "bold": False},
+            color=COLORS["muted"], align="center",
+        )
 
     return SlidePlan(title="Cover", build=_build)
 
@@ -316,8 +442,8 @@ def build_cover_slide(content: dict) -> SlidePlan:
 def build_overview_slide(content: dict) -> SlidePlan:
     def _build(requests: list[dict], page_id: str) -> None:
         # split background: dark left third, cream right two-thirds
-        add_rect(requests, page_id, 0, 0, SLIDE_W_IN, SLIDE_H_IN, COLORS["cream"])
-        add_rect(requests, page_id, 0, 0, 4.4, SLIDE_H_IN, COLORS["dark"])
+        add_rect(requests, page_id, 0, 0, DESIGN_W_IN, DESIGN_H_IN, COLORS["cream"])
+        add_rect(requests, page_id, 0, 0, 4.4, DESIGN_H_IN, COLORS["dark"])
         # top gold strip on left only (subtle)
         add_rect(requests, page_id, 0, 0, 4.4, 0.14, COLORS["gold"])
 
@@ -462,8 +588,8 @@ def build_section_divider(label: str, kicker: str | None = None) -> SlidePlan:
 def build_restaurant_slide(restaurant: dict, photos: dict[str, str]) -> SlidePlan:
     def _build(requests: list[dict], page_id: str) -> None:
         # split: dark left 1/3, cream right 2/3
-        add_rect(requests, page_id, 0, 0, SLIDE_W_IN, SLIDE_H_IN, COLORS["cream"])
-        add_rect(requests, page_id, 0, 0, 4.6, SLIDE_H_IN, COLORS["dark"])
+        add_rect(requests, page_id, 0, 0, DESIGN_W_IN, DESIGN_H_IN, COLORS["cream"])
+        add_rect(requests, page_id, 0, 0, 4.6, DESIGN_H_IN, COLORS["dark"])
         # gold horizontal markers on left top + bottom
         add_rect(requests, page_id, 0, 0, 4.6, 0.14, COLORS["gold"])
 
@@ -698,7 +824,7 @@ def build_terms_slide(content: dict) -> SlidePlan:
 
     def _build(requests: list[dict], page_id: str) -> None:
         fill_background(requests, page_id, COLORS["cream"])
-        add_rect(requests, page_id, 0, 0, SLIDE_W_IN, 0.18, COLORS["gold"])
+        add_rect(requests, page_id, 0, 0, DESIGN_W_IN, 0.18, COLORS["gold"])
 
         add_text(
             requests, page_id, "TÉRMINOS Y CONDICIONES",
@@ -714,7 +840,7 @@ def build_terms_slide(content: dict) -> SlidePlan:
 
         cols = 2
         rows = max(1, (len(terms) + cols - 1) // cols)
-        card_w = (SLIDE_W_IN - 1.4 - (cols - 1) * 0.4) / cols
+        card_w = (DESIGN_W_IN - 1.4 - (cols - 1) * 0.4) / cols
         card_h = max(1.4, (5.4 - (rows - 1) * 0.4) / rows)
         start_x = 0.7
         start_y = 1.95
@@ -772,8 +898,16 @@ def build_closing_slide(content: dict) -> SlidePlan:
 # --------------------------------------------------------------------------- #
 
 
-def plan_presentation(content: dict, photos: dict[str, list[str]]) -> list[SlidePlan]:
-    plans: list[SlidePlan] = [build_cover_slide(content), build_overview_slide(content)]
+def plan_presentation(
+    content: dict,
+    photos: dict[str, list[str]],
+    *,
+    logo_url: str | None = None,
+) -> list[SlidePlan]:
+    plans: list[SlidePlan] = [
+        build_cover_slide(content, logo_url=logo_url),
+        build_overview_slide(content),
+    ]
 
     transfers = content.get("transfers") or []
     for t in transfers:
@@ -849,7 +983,6 @@ def upload_photo_to_drive(drive, path: Path) -> str:
 
 def upload_photos(drive, photos_dir: Path, content: dict) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
-    referenced: set[str] = set()
     for group_key in ("transfers", "restaurants", "activities"):
         for item in content.get(group_key) or []:
             sid = item.get("id")
@@ -862,10 +995,21 @@ def upload_photos(drive, photos_dir: Path, content: dict) -> dict[str, list[str]
                     continue
                 url = upload_photo_to_drive(drive, p)
                 uploaded.append(url)
-                referenced.add(filename)
             if uploaded:
                 out[sid] = uploaded
     return out
+
+
+def upload_logo(drive, photos_dir: Path, content: dict) -> str | None:
+    """Upload the agency logo (if present) and return a public URL."""
+    agency = content.get("agency") or {}
+    logo_filename = agency.get("logo")
+    if not logo_filename:
+        return None
+    logo_path = photos_dir / logo_filename
+    if not logo_path.exists():
+        return None
+    return upload_photo_to_drive(drive, logo_path)
 
 
 def render_slide(slides_api, presentation_id: str, plan: SlidePlan) -> None:
@@ -877,17 +1021,32 @@ def render_slide(slides_api, presentation_id: str, plan: SlidePlan) -> None:
     ).execute()
 
 
-def build_presentation(content: dict, photos: dict[str, list[str]], title: str | None = None) -> dict:
+def build_presentation(
+    content: dict,
+    photos: dict[str, list[str]],
+    *,
+    title: str | None = None,
+    logo_url: str | None = None,
+) -> dict:
     creds = build_credentials()
     slides_api = build("slides", "v1", credentials=creds, cache_discovery=False)
     drive_api = build("drive", "v3", credentials=creds, cache_discovery=False)
 
     pres_title = title or f"{content.get('client', 'Propuesta')} · {content.get('destination', '')}".strip(" ·")
+    # Google Slides currently ignores `pageSize` on `presentations.create` and
+    # always returns a 10" x 5.625" canvas. Read the actual dimensions back
+    # and reconfigure layout helpers so positions are anchored to the real
+    # canvas, otherwise elements computed for 13.333" land off-screen.
     pres = slides_api.presentations().create(body={"title": pres_title}).execute()
     presentation_id = pres["presentationId"]
 
-    # delete the default slide
+    # delete the default slide and pick up the real page size
     full = slides_api.presentations().get(presentationId=presentation_id).execute()
+    page_size = full.get("pageSize") or {}
+    width_emu = page_size.get("width", {}).get("magnitude") or emu(SLIDE_W_IN)
+    height_emu = page_size.get("height", {}).get("magnitude") or emu(SLIDE_H_IN)
+    set_canvas(width_emu / EMU_PER_INCH, height_emu / EMU_PER_INCH)
+
     default_slide_id = (full.get("slides") or [{}])[0].get("objectId")
     if default_slide_id:
         slides_api.presentations().batchUpdate(
@@ -895,7 +1054,7 @@ def build_presentation(content: dict, photos: dict[str, list[str]], title: str |
             body={"requests": [{"deleteObject": {"objectId": default_slide_id}}]},
         ).execute()
 
-    plans = plan_presentation(content, photos)
+    plans = plan_presentation(content, photos, logo_url=logo_url)
     for plan in plans:
         render_slide(slides_api, presentation_id, plan)
         time.sleep(0.05)  # gentle on quota
@@ -952,8 +1111,9 @@ def main() -> None:
     creds = build_credentials()
     drive_api = build("drive", "v3", credentials=creds, cache_discovery=False)
     photos = upload_photos(drive_api, photos_dir, content)
+    logo_url = upload_logo(drive_api, photos_dir, content)
 
-    result = build_presentation(content, photos, title=args.title)
+    result = build_presentation(content, photos, title=args.title, logo_url=logo_url)
     export_path = Path(args.export_pptx)
     export_path.parent.mkdir(parents=True, exist_ok=True)
     export_pptx(result["drive_api"], result["presentationId"], export_path)

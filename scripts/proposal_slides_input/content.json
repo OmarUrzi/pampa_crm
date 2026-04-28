@@ -1,8 +1,8 @@
 {
   "client": "Test Empresa",
   "event_name": "Evento Test Gmail 2",
-  "destination": "Bariloche",
-  "date": null,
+  "destination": "San Carlos de Bariloche",
+  "date": "Mayo 2026",
   "pax": 50,
   "validity_days": 15,
   "currency": "USD",
