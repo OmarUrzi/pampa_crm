@@ -1,0 +1,75 @@
+{
+  "client": "Test Empresa",
+  "event_name": "Evento Test Gmail 2",
+  "destination": "Bariloche",
+  "date": null,
+  "pax": 50,
+  "validity_days": 15,
+  "currency": "USD",
+  "agency": {
+    "name": "Dannemann",
+    "tagline": "Tagline test",
+    "about": "sobre la agencia bla bla bla",
+    "logo": "agency_logo.png"
+  },
+  "currency_note": "Tarifas netas con IVA incluido. Sujeto a disponibilidad al momento de la confirmación.",
+  "transfers": [
+    {
+      "id": "servicio_de_traslado",
+      "name": "Servicio de Traslado",
+      "description": "Podemos ofrecer los mejores vehículos en Bariloche de acuerdo al requerimiento de su  \ngrupo \nLos vehículos se ajustarán al número de pasajeros a transportar, desde y al aeropuerto, a los \nrestaurantes, excursiones, etc. \nCada transporte contempla valija Carry on + bolso de mano por pasajero.  \nEn el caso de que tengan valijas a despachar se tendrá que agregar un coche solo para las \nvalijas.",
+      "pax": 50,
+      "unit": 113,
+      "currency": "USD",
+      "subtotal": 5650,
+      "provider": null,
+      "photos": [
+        "servicio_de_traslado_1.jpg"
+      ],
+      "route": "Servicio de Traslado"
+    }
+  ],
+  "restaurants": [],
+  "activities": [
+    {
+      "id": "clase_ski_cerro_catedral",
+      "name": "Clase Ski Cerro Catedral",
+      "description": "Ubicado en San Carlos de Bariloche, el Cerro Catedral ofrece el entorno ideal para iniciarse o \nperfeccionarse en el ski. \nLas clases, disponibles en formato grupal o privado, son dictadas por instructores \nprofesionales y se adaptan a cada nivel, garantizando una experiencia segura y dinámica en \nla nieve. \nLa actividad puede incluir alquiler de equipos y acceso a medios de elevación, permitiendo \ndisfrutar al máximo de la jornada en uno de los centros de ski más importantes de \nSudamérica. \nFormatos de clases:  \n- \nClases exclusiva: Esté formado de clase tiene una capacidad máxima de 3 personas y \nesas personas cuentan con la completa exclusividad del instructor de ski. Cuenta con \nel formato de 2 hs, 3 hs o día completo.",
+      "pax": 50,
+      "unit": 238,
+      "currency": "USD",
+      "subtotal": 11900,
+      "provider": null,
+      "photos": [
+        "clase_ski_cerro_catedral_1.jpg"
+      ],
+      "number": "01"
+    }
+  ],
+  "totals": {
+    "USD": 17550,
+    "ARS": 0
+  },
+  "terms": [
+    {
+      "icon": "⚠️",
+      "title": "Sin reserva efectiva",
+      "body": "Las tarifas y la disponibilidad están sujetas a confirmación al momento de cerrar la reserva."
+    },
+    {
+      "icon": "🗓️",
+      "title": "Vigencia de la propuesta",
+      "body": "Esta cotización tiene validez de 15 días corridos desde su emisión."
+    },
+    {
+      "icon": "💱",
+      "title": "Moneda y forma de pago",
+      "body": "Tarifas en USD y ARS según corresponda. Pagos según condiciones acordadas con la agencia."
+    },
+    {
+      "icon": "✈️",
+      "title": "Cambios y cancelaciones",
+      "body": "Las modificaciones y cancelaciones se rigen por las políticas de cada proveedor."
+    }
+  ]
+}

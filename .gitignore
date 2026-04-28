@@ -12,3 +12,7 @@ playwright-report
 test-results
 .DS_Store
 .cursor-out.txt
+.venv-slides/
+scripts/proposal_slides_output/
+scripts/proposal_slides_input/photos/
+scripts/proposal_slides_input/reference/
