@@ -49,6 +49,8 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
   const [confirmDelete, setConfirmDelete] = useState<null | { versionId: string; itemId: string }>(null);
   const [slides, setSlides] = useState<SlideDeckListItem[]>([]);
   const [slidesLoading, setSlidesLoading] = useState(false);
+  const [slidesGenerating, setSlidesGenerating] = useState(false);
+  const [slidesGenerateMessage, setSlidesGenerateMessage] = useState<string | null>(null);
   const toAbsoluteSlidesUrl = (urlOrPath: string) => {
     const s = String(urlOrPath ?? "").trim();
     if (!s) return s;
@@ -243,6 +245,62 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
     if (ev.cotizado === next) return;
     updateEvento(eventoId, { cotizado: next });
   }, [active, ev.cur, ev.cotizado, eventoId, onlyCur, totalsByCur, updateEvento]);
+
+  const generateSlides = async () => {
+    if (slidesGenerating) return;
+    if (!canEdit) return void gate.ensureAuthed();
+
+    setSlidesGenerating(true);
+    setSlidesGenerateMessage("Generando presentación con Claude. Puede tardar un minuto.");
+    try {
+      const res = await gate.run(async () => {
+        return await apiFetch<{ url?: string; previewHtml?: string }>("/slides/generate-from-evento", {
+          method: "POST",
+          body: JSON.stringify({
+            eventoId,
+            prompt:
+              "Generá una presentación (cotización) basada en la cotización actual del evento. Incluí precio por ítem, descripciones y fotos del catálogo cuando existan. Usá el logo de la agencia en la portada si está disponible.",
+          }),
+          // Claude puede demorar; evitamos abortar el request por timeout del cliente.
+          timeoutMs: 210_000,
+        } as any);
+      });
+      if (!res) {
+        setSlidesGenerating(false);
+        setSlidesGenerateMessage("No se pudo generar la presentación.");
+        return;
+      }
+
+      const deckUrl = toPptxUrl(res?.url ?? "");
+      if (deckUrl) {
+        try {
+          await downloadFromUrl(deckUrl, `slides-${eventoId}.pptx`);
+        } catch {
+          try {
+            openDownload(deckUrl, `slides-${eventoId}.pptx`);
+          } catch {
+            hardNavigateToDownload(deckUrl);
+          }
+        }
+      } else if (res?.previewHtml) {
+        // Fallback: if deck isn't persisted we only have HTML for now.
+        downloadHtml(res.previewHtml, `slides-${eventoId}.html`);
+      }
+
+      try {
+        const list = await apiListSlidesForEvento(eventoId);
+        setSlides((list?.decks ?? []) as SlideDeckListItem[]);
+      } catch {
+        // ignore
+      }
+      setSlidesGenerating(false);
+      setSlidesGenerateMessage("Presentación generada. Se inició la descarga del PPTX.");
+      gate.info("Presentación generada. Descarga iniciada.");
+    } catch {
+      setSlidesGenerating(false);
+      setSlidesGenerateMessage("No se pudo generar la presentación.");
+    }
+  };
 
   return (
     <div>
@@ -457,44 +515,11 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
             </Button>
             <Button
               type="button"
-              onClick={async () => {
-                await gate.run(async () => {
-                  const res = await apiFetch<{ url?: string; previewHtml?: string }>("/slides/generate-from-evento", {
-                    method: "POST",
-                    body: JSON.stringify({
-                      eventoId,
-                      prompt:
-                        "Generá una presentación (cotización) basada en la cotización actual del evento. Incluí precio por ítem, descripciones y fotos del catálogo cuando existan. Usá el logo de la agencia en la portada si está disponible.",
-                    }),
-                    // Claude puede demorar; evitamos abortar el request por timeout del cliente.
-                    timeoutMs: 210_000,
-                  } as any);
-                  const deckUrl = toPptxUrl(res?.url ?? "");
-                  if (deckUrl) {
-                    try {
-                      await downloadFromUrl(deckUrl, `slides-${eventoId}.pptx`);
-                    } catch {
-                      try {
-                        openDownload(deckUrl, `slides-${eventoId}.pptx`);
-                      } catch {
-                        hardNavigateToDownload(deckUrl);
-                      }
-                    }
-                  } else if (res?.previewHtml) {
-                    // Fallback: if deck isn't persisted we only have HTML for now.
-                    downloadHtml(res.previewHtml, `slides-${eventoId}.html`);
-                  }
-                  try {
-                    const list = await apiListSlidesForEvento(eventoId);
-                    setSlides((list?.decks ?? []) as SlideDeckListItem[]);
-                  } catch {
-                    // ignore
-                  }
-                });
-              }}
-              disabled={!canEdit}
+              onClick={() => void generateSlides()}
+              disabled={!canEdit || slidesGenerating}
+              title={slidesGenerating ? "Ya hay una presentación generándose" : undefined}
             >
-              Generar Slides ↗
+              {slidesGenerating ? "Generando…" : "Generar Slides ↗"}
             </Button>
           </div>
         </div>
@@ -502,9 +527,28 @@ export function CotizacionesTab({ eventoId }: { eventoId: string }) {
         <div style={{ marginTop: 12, border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, overflow: "hidden" }}>
           <div style={{ padding: "10px 12px", background: "var(--color-background-secondary)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 900 }}>Slides generadas</div>
-            <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{slidesLoading ? "cargando…" : `${slides.length}`}</div>
+            <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>
+              {slidesGenerating ? "generando…" : slidesLoading ? "cargando…" : `${slides.length}`}
+            </div>
           </div>
           <div style={{ padding: 12, display: "grid", gap: 8 }}>
+            {slidesGenerateMessage ? (
+              <div
+                role="status"
+                aria-live="polite"
+                style={{
+                  border: "0.5px solid var(--color-border-tertiary)",
+                  borderRadius: 10,
+                  padding: "8px 10px",
+                  background: slidesGenerating ? "var(--color-primary-subtle)" : "var(--color-background-secondary)",
+                  color: slidesGenerating ? "var(--color-primary)" : "var(--color-text-secondary)",
+                  fontSize: 12,
+                  fontWeight: slidesGenerating ? 800 : 650,
+                }}
+              >
+                {slidesGenerateMessage}
+              </div>
+            ) : null}
             {slides.length ? (
               slides.slice(0, 8).map((d) => (
                 <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
